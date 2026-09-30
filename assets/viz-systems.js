@@ -336,7 +336,207 @@
   });
 
   /* --------------------------------------------------------------------------
-   * 5. Systems Latency Numbers Every Engineer Must Know
+   * 5. Journaling File System Crash Simulator
+   * -------------------------------------------------------------------------- */
+  OS.register('journalCrash', function (host) {
+    let phase = 'READY'; // READY, JOURNAL_WRITTEN, COMMITTED, CHECKPOINTED, CRASHED_PRE, CRASHED_POST, RECOVERED
+
+    const controls = OS.controls(host);
+    OS.button(controls, 'Write to Journal (TxB + Blocks)', () => {
+      phase = 'JOURNAL_WRITTEN';
+      render();
+    });
+    OS.button(controls, 'Crash Power (Before Commit)', () => {
+      phase = 'CRASHED_PRE';
+      render();
+    });
+    OS.button(controls, 'Commit Transaction (TxE)', () => {
+      phase = 'COMMITTED';
+      render();
+    }, { primary: true });
+    OS.button(controls, 'Crash Power (After Commit)', () => {
+      phase = 'CRASHED_POST';
+      render();
+    });
+    OS.button(controls, 'Run Recovery Replay (fsck/mount)', () => {
+      phase = 'RECOVERED';
+      render();
+    });
+
+    const cv = OS.canvas(host, {
+      height: 180,
+      label: 'Journaling write ahead logging and crash recovery',
+      draw: (ctx, w, h) => {
+        // Journal Area
+        ctx.fillStyle = OS.rgba(OS.C.accent, 0.1);
+        ctx.strokeStyle = OS.C.accent;
+        ctx.lineWidth = 1.5;
+        ctx.roundRect(25, 25, 230, 120, 8);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = OS.C.accent;
+        ctx.font = OS.font(11, 'mono', 600);
+        ctx.fillText('CONTIGUOUS JOURNAL (WAL)', 35, 48);
+
+        ctx.font = OS.font(10, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        const jTx = phase !== 'READY' && phase !== 'CRASHED_PRE';
+        ctx.fillText(`[TxB: Begin] ${jTx ? '✓ Written' : '—'}`, 35, 75);
+        ctx.fillText(`[Metadata + Data] ${jTx ? '✓ Written' : '—'}`, 35, 98);
+        const jCommit = phase === 'COMMITTED' || phase === 'CRASHED_POST' || phase === 'RECOVERED';
+        ctx.fillStyle = jCommit ? OS.C.green : OS.C.muted;
+        ctx.font = OS.font(10, 'mono', 600);
+        ctx.fillText(`[TxE: Commit Block] ${jCommit ? '✓ COMMITTED' : 'Not committed'}`, 35, 120);
+
+        // Filesystem Storage Area
+        const fsX = 275;
+        ctx.fillStyle = OS.C.sunk;
+        ctx.strokeStyle = OS.C.line;
+        ctx.roundRect(fsX, 25, Math.min(260, w - fsX - 25), 120, 8);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = OS.C.amber;
+        ctx.font = OS.font(11, 'mono', 600);
+        ctx.fillText('FINAL FILESYSTEM BLOCKS', fsX + 15, 48);
+        ctx.font = OS.font(10, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        ctx.fillText(`Inode: ${phase === 'RECOVERED' ? '✓ Updated' : 'Pending checkpoint'}`, fsX + 15, 75);
+        ctx.fillText(`Data Bitmap: ${phase === 'RECOVERED' ? '✓ Updated' : 'Pending checkpoint'}`, fsX + 15, 98);
+        ctx.fillText(`Data Sector: ${phase === 'RECOVERED' ? '✓ Written' : 'Pending checkpoint'}`, fsX + 15, 120);
+      }
+    });
+
+    const readout = OS.readout(host);
+    function render() {
+      cv.redraw();
+      if (phase === 'CRASHED_PRE') {
+        readout.innerHTML = `<b style="color:var(--rose)">CRASH BEFORE COMMIT:</b> Power lost while writing journal. On reboot, kernel scans journal, sees no TxE commit block, and discards partial transaction. <b>Zero filesystem corruption!</b>`;
+      } else if (phase === 'CRASHED_POST') {
+        readout.innerHTML = `<b style="color:var(--amber)">CRASH AFTER COMMIT:</b> Power lost before checkpointing to final blocks. On reboot, kernel sees valid TxE commit block and simply replays the transaction. <b>Data guaranteed safe!</b>`;
+      } else if (phase === 'RECOVERED') {
+        readout.innerHTML = `<b style="color:var(--green)">RECOVERY COMPLETE:</b> Journal scanned and replayed in 0.2 seconds. Full-disk fsck avoided!`;
+      } else {
+        readout.innerHTML = `<b>Write-Ahead Logging:</b> Transactions are committed atomically to the journal before modifying fixed inode/bitmap structures.`;
+      }
+    }
+    render();
+  });
+
+  /* --------------------------------------------------------------------------
+   * 6. Container Namespaces & cgroups Isolation
+   * -------------------------------------------------------------------------- */
+  OS.register('containerMatrix', function (host) {
+    let view = 'container';
+
+    const controls = OS.controls(host);
+    OS.segmented(controls, {
+      label: 'Perspective',
+      options: [
+        { label: 'Container PID Namespace View', value: 'container' },
+        { label: 'Host Kernel Global View', value: 'host' }
+      ],
+      value: view,
+      onChange: (v) => { view = v; render(); }
+    });
+
+    const cv = OS.canvas(host, {
+      height: 180,
+      label: 'Container namespace and cgroup boundary',
+      draw: (ctx, w, h) => {
+        const isContainer = view === 'container';
+
+        ctx.fillStyle = isContainer ? OS.rgba(OS.C.accent, 0.12) : OS.C.sunk;
+        ctx.strokeStyle = isContainer ? OS.C.accent : OS.C.line;
+        ctx.lineWidth = 2;
+        ctx.roundRect(25, 25, w - 50, 120, 8);
+        ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = isContainer ? OS.C.accent : OS.C.ink;
+        ctx.font = OS.font(12, 'mono', 600);
+        ctx.fillText(isContainer ? 'CONTAINER ISOLATED VIEW (PID Namespace)' : 'HOST KERNEL GLOBAL VIEW', 35, 52);
+
+        ctx.font = OS.font(11, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        if (isContainer) {
+          ctx.fillText('• PID 1: /usr/sbin/nginx (Application sees itself as init/root)', 35, 80);
+          ctx.fillText('• Mount: / (Private overlayfs mount root, host files hidden)', 35, 102);
+          ctx.fillText('• cgroups v2: cpu.max = 50000 100000 (Clamped to 50% CPU limit)', 35, 124);
+        } else {
+          ctx.fillText('• PID 4082: /usr/sbin/nginx (Real host PID)', 35, 80);
+          ctx.fillText('• PID 1: /sbin/systemd (Real init system)', 35, 102);
+          ctx.fillText('• Total Host Processes: 248 tasks running on bare metal kernel', 35, 124);
+        }
+      }
+    });
+
+    const readout = OS.readout(host);
+    function render() {
+      cv.redraw();
+      readout.innerHTML = `
+        <b>Linux Container Architecture:</b> Containers are not hypervisors or VMs. 
+        <b>Namespaces</b> restrict what a process can <i>see</i> (PID, network, mount points), while <b>cgroups v2</b> restrict what a process can <i>use</i> (CPU cores, memory, disk I/O).
+      `;
+    }
+    render();
+  });
+
+  /* --------------------------------------------------------------------------
+   * 7. In-Kernel Bytecode: eBPF Verifier & Hook Simulator
+   * -------------------------------------------------------------------------- */
+  OS.register('ebpfSim', function (host) {
+    const progs = [
+      { name: 'XDP Packet Counter (Safe)', status: 'PASS', desc: '14 instructions, bounded loop, pointer validated within packet range [data..data_end]. JIT compiled.' },
+      { name: 'Out-Of-Bounds Memory Access (Unsafe)', status: 'REJECT', desc: 'Instruction 8 dereferences *(skb + 4096) without checking buffer length. Verifier halts load!' },
+      { name: 'Unbounded While Loop (Unsafe)', status: 'REJECT', desc: 'Instruction 12 contains backward jump without guaranteed termination counter. Halts kernel load!' }
+    ];
+    let selected = progs[0];
+
+    const controls = OS.controls(host);
+    OS.select(controls, {
+      id: 'ebpf-select',
+      label: 'eBPF Program to Load:',
+      options: progs.map(p => ({ label: p.name, value: p.name })),
+      value: selected.name,
+      onChange: (v) => {
+        selected = progs.find(p => p.name === v);
+        render();
+      }
+    });
+
+    const cv = OS.canvas(host, {
+      height: 170,
+      label: 'eBPF kernel verifier state',
+      draw: (ctx, w, h) => {
+        const isPass = selected.status === 'PASS';
+        ctx.fillStyle = isPass ? OS.rgba(OS.C.green, 0.12) : OS.rgba(OS.C.rose, 0.15);
+        ctx.strokeStyle = isPass ? OS.C.green : OS.C.rose;
+        ctx.lineWidth = 2;
+        ctx.roundRect(25, 25, w - 50, 110, 8);
+        ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = isPass ? OS.C.green : OS.C.rose;
+        ctx.font = OS.font(13, 'mono', 600);
+        ctx.fillText(`KERNEL VERIFIER: [${isPass ? 'PROGRAM VERIFIED & JIT COMPILED' : 'LOAD REJECTED BY KERNEL'}]`, 35, 52);
+
+        ctx.font = OS.font(11, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        ctx.fillText(selected.desc, 35, 82);
+        ctx.fillText(`Hook target: net/core/filter.c -> Attach Point: XDP / tc`, 35, 106);
+      }
+    });
+
+    const readout = OS.readout(host);
+    function render() {
+      cv.redraw();
+      if (selected.status === 'PASS') {
+        readout.innerHTML = `<b style="color:var(--green)">eBPF Safety Proof:</b> The in-kernel verifier traversed all execution DAG paths and verified memory safety. JIT compiled into native machine code running at line rate.`;
+      } else {
+        readout.innerHTML = `<b style="color:var(--rose)">VERIFIER REJECTION:</b> Kernel blocked loading of unsafe bytecode. In-flight verifier guarantees that user eBPF programs can never crash or freeze the Linux kernel.`;
+      }
+    }
+    render();
+  });
+
+  /* --------------------------------------------------------------------------
+   * 8. Systems Latency Numbers Every Engineer Must Know
    * -------------------------------------------------------------------------- */
   OS.register('latencyPyramid', function (host) {
     const tiers = [

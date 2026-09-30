@@ -302,4 +302,221 @@
     render();
   });
 
+  /* --------------------------------------------------------------------------
+   * 4. Atomic CAS & Spinlock Visualizer
+   * -------------------------------------------------------------------------- */
+  OS.register('spinlockSim', function (host) {
+    let lockVal = 0; // 0 = FREE, 1 = HELD
+    let holder = null;
+    let thread1Spins = 0;
+
+    const controls = OS.controls(host);
+    OS.button(controls, 'Thread 0 Acquires Lock (CAS)', () => {
+      if (lockVal === 0) {
+        lockVal = 1;
+        holder = 'Thread 0';
+      }
+      render();
+    }, { primary: true });
+
+    OS.button(controls, 'Thread 1 Attempts Lock (Spin Loop)', () => {
+      if (lockVal === 1 && holder !== 'Thread 1') {
+        thread1Spins += 50; // Burns 50 busy-wait cycles
+      } else if (lockVal === 0) {
+        lockVal = 1;
+        holder = 'Thread 1';
+      }
+      render();
+    });
+
+    OS.button(controls, 'Release Lock', () => {
+      lockVal = 0;
+      holder = null;
+      render();
+    });
+
+    const cv = OS.canvas(host, {
+      height: 180,
+      label: 'Atomic CAS and spinlock states',
+      draw: (ctx, w, h) => {
+        // Lock Memory Address Box
+        ctx.fillStyle = lockVal === 1 ? OS.rgba(OS.C.rose, 0.15) : OS.rgba(OS.C.green, 0.15);
+        ctx.strokeStyle = lockVal === 1 ? OS.C.rose : OS.C.green;
+        ctx.lineWidth = 2;
+        ctx.roundRect(25, 25, 170, 120, 8);
+        ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = lockVal === 1 ? OS.C.rose : OS.C.green;
+        ctx.font = OS.font(12, 'mono', 600);
+        ctx.fillText(`LOCK: [${lockVal === 1 ? 'LOCKED' : 'FREE'}]`, 35, 52);
+        ctx.font = OS.font(10, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        ctx.fillText('Addr: 0x7FFF0040', 35, 75);
+        ctx.fillText(`Value: ${lockVal}`, 35, 95);
+        ctx.fillText(`Holder: ${holder || 'None'}`, 35, 115);
+
+        // Thread States Box
+        const thX = 220;
+        ctx.fillStyle = OS.C.sunk;
+        ctx.strokeStyle = OS.C.line;
+        ctx.roundRect(thX, 25, Math.min(300, w - thX - 25), 120, 8);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = OS.C.accent;
+        ctx.font = OS.font(12, 'mono', 600);
+        ctx.fillText('CORE EXECUTION STATES', thX + 15, 52);
+        ctx.font = OS.font(10, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        ctx.fillText(`Core 0 (Thread 0): ${holder === 'Thread 0' ? 'In Critical Section' : 'Idle'}`, thX + 15, 80);
+        ctx.fillStyle = thread1Spins > 0 && lockVal === 1 ? OS.C.rose : OS.C.ink;
+        ctx.fillText(`Core 1 (Thread 1): ${thread1Spins > 0 && lockVal === 1 ? `SPINNING (${thread1Spins} cycles burned)` : 'Idle'}`, thX + 15, 105);
+      }
+    });
+
+    const readout = OS.readout(host);
+    function render() {
+      cv.redraw();
+      readout.innerHTML = `
+        <b>Spinlock Architecture:</b> A spinlock uses hardware atomic instructions (e.g. <code>LOCK CMPXCHG</code> on x86). If the lock is held, competing threads burn 100% of a CPU core looping in user space. Spinlocks are ideal for microsecond kernel critical sections, but disastrous for long-held user locks.
+      `;
+    }
+    render();
+  });
+
+  /* --------------------------------------------------------------------------
+   * 5. Reader-Writer Lock Coordinator
+   * -------------------------------------------------------------------------- */
+  OS.register('rwLock', function (host) {
+    let readers = 0;
+    let writer = false;
+
+    const controls = OS.controls(host);
+    OS.button(controls, '+ Add Reader (Shared)', () => {
+      if (!writer) readers++;
+      render();
+    }, { primary: true });
+
+    OS.button(controls, '- Remove Reader', () => {
+      if (readers > 0) readers--;
+      render();
+    });
+
+    OS.button(controls, 'Acquire Writer (Exclusive)', () => {
+      if (readers === 0) writer = true;
+      render();
+    });
+
+    OS.button(controls, 'Release Writer', () => {
+      writer = false;
+      render();
+    });
+
+    const cv = OS.canvas(host, {
+      height: 160,
+      label: 'Reader writer lock synchronization',
+      draw: (ctx, w, h) => {
+        const stateColor = writer ? OS.C.rose : (readers > 0 ? OS.C.teal : OS.C.green);
+        ctx.fillStyle = OS.rgba(stateColor, 0.15);
+        ctx.strokeStyle = stateColor;
+        ctx.lineWidth = 2;
+        ctx.roundRect(25, 25, w - 50, 110, 8);
+        ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = stateColor;
+        ctx.font = OS.font(14, 'mono', 600);
+        ctx.fillText(`LOCK STATE: ${writer ? 'EXCLUSIVE (WRITER)' : (readers > 0 ? `SHARED (${readers} READERS)` : 'UNLOCKED')}`, 35, 55);
+
+        ctx.font = OS.font(11, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        ctx.fillText('• Readers allowed concurrently when no writer is active.', 35, 85);
+        ctx.fillText('• Writers require 100% exclusive access (0 readers, 0 other writers).', 35, 108);
+      }
+    });
+
+    const readout = OS.readout(host);
+    function render() {
+      cv.redraw();
+      readout.innerHTML = `
+        <b>Reader-Writer Invariant:</b> Multiple readers can read simultaneously without interference. A writer requires exclusive access, blocking all new readers and writers until it finishes.
+      `;
+    }
+    render();
+  });
+
+  /* --------------------------------------------------------------------------
+   * 6. Read-Copy-Update (RCU) Visualizer
+   * -------------------------------------------------------------------------- */
+  OS.register('rcuSim', function (host) {
+    let phase = 'STABLE'; // STABLE -> COPY_UPDATE -> GRACE_PERIOD -> RECLAIMED
+
+    const controls = OS.controls(host);
+    OS.button(controls, 'Writer Modifies Data (Copy + Atomic Swing)', () => {
+      phase = 'GRACE_PERIOD';
+      render();
+    }, { primary: true });
+
+    OS.button(controls, 'End Grace Period (Reclaim Old Memory)', () => {
+      phase = 'RECLAIMED';
+      render();
+    });
+
+    OS.button(controls, 'Reset RCU', () => {
+      phase = 'STABLE';
+      render();
+    });
+
+    const cv = OS.canvas(host, {
+      height: 180,
+      label: 'Read copy update pointer lifecycle',
+      draw: (ctx, w, h) => {
+        // Global Pointer Box
+        ctx.fillStyle = OS.C.sunk;
+        ctx.strokeStyle = OS.C.accent;
+        ctx.lineWidth = 2;
+        ctx.roundRect(25, 25, 140, 120, 6);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = OS.C.accent;
+        ctx.font = OS.font(11, 'mono', 600);
+        ctx.fillText('GLOBAL POINTER (gp)', 32, 50);
+        ctx.font = OS.font(10, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        ctx.fillText(phase === 'STABLE' ? 'Points to: V1' : 'Points to: V2 (New)', 35, 80);
+        ctx.fillText('Atomic 64-bit swing', 35, 105);
+
+        // Node V1 (Old)
+        const v1X = 190;
+        ctx.fillStyle = phase === 'RECLAIMED' ? OS.rgba(OS.C.faint, 0.1) : OS.rgba(OS.C.amber, 0.15);
+        ctx.strokeStyle = phase === 'RECLAIMED' ? OS.C.line : OS.C.amber;
+        ctx.roundRect(v1X, 25, 140, 55, 6);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = phase === 'RECLAIMED' ? OS.C.faint : OS.C.amber;
+        ctx.font = OS.font(11, 'mono', 600);
+        ctx.fillText('NODE V1 (Old)', v1X + 10, 48);
+        ctx.font = OS.font(9, 'mono', 400);
+        ctx.fillText(phase === 'RECLAIMED' ? 'kfree() Reclaimed' : 'Readers finishing...', v1X + 10, 68);
+
+        // Node V2 (New)
+        if (phase !== 'STABLE') {
+          ctx.fillStyle = OS.rgba(OS.C.green, 0.15);
+          ctx.strokeStyle = OS.C.green;
+          ctx.roundRect(v1X, 90, 140, 55, 6);
+          ctx.fill(); ctx.stroke();
+          ctx.fillStyle = OS.C.green;
+          ctx.font = OS.font(11, 'mono', 600);
+          ctx.fillText('NODE V2 (New Copy)', v1X + 10, 113);
+          ctx.font = OS.font(9, 'mono', 400);
+          ctx.fillText('All new readers see V2', v1X + 10, 133);
+        }
+      }
+    });
+
+    const readout = OS.readout(host);
+    function render() {
+      cv.redraw();
+      readout.innerHTML = `
+        <b>RCU Mechanism in Linux:</b> Readers execute lock-free with zero atomics or bus locks (pure memory reads). The writer allocates a new copy, modifies it, and swings the global pointer. Old memory is only freed after all existing readers pass through a context switch (the <i>grace period</i>).
+      `;
+    }
+    render();
+  });
+
 })();

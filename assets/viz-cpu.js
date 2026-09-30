@@ -586,13 +586,190 @@
       cv.redraw();
       readout.innerHTML = `
         <b>MESI State Meanings:</b> 
-        <b>M (Modified):</b> Dirty cache line, only present in this core, memory is stale. | 
+        <b>M (Modified):</b> Dirty cache line, only in this core, memory is stale. | 
         <b>E (Exclusive):</b> Clean cache line, only in this core. | 
         <b>S (Shared):</b> Clean cache line, present in multiple cores. | 
         <b>I (Invalid):</b> Cache line is stale and cannot be read without a bus transaction.
       `;
     }
 
+    render();
+  });
+
+  /* --------------------------------------------------------------------------
+   * 6. Thread Stacks & Context Switching
+   * -------------------------------------------------------------------------- */
+  OS.register('threadStacks', function (host) {
+    let t0Depth = 2;
+    let t1Depth = 1;
+    let activeThread = 0;
+
+    const controls = OS.controls(host);
+    OS.button(controls, 'Switch Active Thread (Context Switch)', () => {
+      activeThread = activeThread === 0 ? 1 : 0;
+      render();
+    }, { primary: true });
+    OS.button(controls, 'Thread 0 Pushes Frame (Call)', () => {
+      if (t0Depth < 4) t0Depth++;
+      render();
+    });
+    OS.button(controls, 'Thread 1 Pushes Frame (Call)', () => {
+      if (t1Depth < 4) t1Depth++;
+      render();
+    });
+    OS.button(controls, 'Reset Stacks', () => {
+      t0Depth = 2; t1Depth = 1; activeThread = 0;
+      render();
+    });
+
+    const cv = OS.canvas(host, {
+      height: 190,
+      label: 'Thread stack layouts in shared address space',
+      draw: (ctx, w, h) => {
+        // Shared Heap & Code Box
+        ctx.fillStyle = OS.C.sunk;
+        ctx.strokeStyle = OS.C.line;
+        ctx.roundRect(25, 20, 160, 140, 8);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = OS.C.amber;
+        ctx.font = OS.font(11, 'mono', 600);
+        ctx.fillText('SHARED ADDRESS SPACE', 35, 42);
+        ctx.font = OS.font(10, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        ctx.fillText('• Program Code (.text)', 35, 68);
+        ctx.fillText('• Global Data (.bss)', 35, 90);
+        ctx.fillText('• Shared Dynamic Heap', 35, 112);
+        ctx.fillText('• Open File Descriptors', 35, 134);
+
+        // Thread 0 Stack Box
+        const t0X = 205;
+        const colW = Math.min(140, (w - 240) / 2);
+        ctx.fillStyle = activeThread === 0 ? OS.rgba(OS.C.accent, 0.15) : OS.C.sunk;
+        ctx.strokeStyle = activeThread === 0 ? OS.C.accent : OS.C.line;
+        ctx.lineWidth = activeThread === 0 ? 2 : 1;
+        ctx.roundRect(t0X, 20, colW, 140, 8);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = activeThread === 0 ? OS.C.accent : OS.C.muted;
+        ctx.font = OS.font(11, 'mono', 600);
+        ctx.fillText('THREAD 0 STACK', t0X + 10, 42);
+        for (let i = 0; i < t0Depth; i++) {
+          ctx.fillStyle = OS.rgba(OS.C.accent, 0.2);
+          ctx.fillRect(t0X + 10, 125 - i * 24, colW - 20, 20);
+          ctx.fillStyle = OS.C.ink;
+          ctx.font = OS.font(9, 'mono', 500);
+          ctx.fillText(`Frame ${i} [RSP]`, t0X + 14, 139 - i * 24);
+        }
+
+        // Thread 1 Stack Box
+        const t1X = t0X + colW + 15;
+        ctx.fillStyle = activeThread === 1 ? OS.rgba(OS.C.teal, 0.15) : OS.C.sunk;
+        ctx.strokeStyle = activeThread === 1 ? OS.C.teal : OS.C.line;
+        ctx.lineWidth = activeThread === 1 ? 2 : 1;
+        ctx.roundRect(t1X, 20, colW, 140, 8);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = activeThread === 1 ? OS.C.teal : OS.C.muted;
+        ctx.font = OS.font(11, 'mono', 600);
+        ctx.fillText('THREAD 1 STACK', t1X + 10, 42);
+        for (let i = 0; i < t1Depth; i++) {
+          ctx.fillStyle = OS.rgba(OS.C.teal, 0.2);
+          ctx.fillRect(t1X + 10, 125 - i * 24, colW - 20, 20);
+          ctx.fillStyle = OS.C.ink;
+          ctx.font = OS.font(9, 'mono', 500);
+          ctx.fillText(`Frame ${i} [RSP]`, t1X + 14, 139 - i * 24);
+        }
+      }
+    });
+
+    const readout = OS.readout(host);
+    function render() {
+      cv.redraw();
+      readout.innerHTML = `
+        <b>Active Core Context:</b> Running <span class="hl">Thread ${activeThread}</span>.<br>
+        Threads share the heap and code pointers within a single process address space, but maintain private stacks and register files (%rsp, %rip). Switching threads within a process avoids reloading the page table (CR3), keeping the TLB translation cache warm.
+      `;
+    }
+    render();
+  });
+
+  /* --------------------------------------------------------------------------
+   * 7. Interrupt Vector Table & Handling Pipeline
+   * -------------------------------------------------------------------------- */
+  OS.register('interruptPipeline', function (host) {
+    const vectors = [
+      { vec: 0, name: 'Timer Interrupt (IRQ 0)', type: 'Hardware IRQ', handler: 'timer_interrupt_handler()', phase: 'Preempts task for CFS' },
+      { vec: 11, name: 'NIC Packet Received (IRQ 11)', type: 'Hardware IRQ', handler: 'e1000_intr() -> napi_schedule()', phase: 'Top-half acknowledges, bottom-half softirq polls packets' },
+      { vec: 14, name: 'Page Fault Exception (#PF)', type: 'CPU Exception', handler: 'do_page_fault()', phase: 'Synchronous trap on invalid PTE' }
+    ];
+    let selectedVec = vectors[0];
+
+    const controls = OS.controls(host);
+    OS.select(controls, {
+      id: 'vector-select',
+      label: 'Trigger Interrupt Vector:',
+      options: vectors.map(v => ({ label: `${v.name} (Vec ${v.vec})`, value: v.vec })),
+      value: selectedVec.vec,
+      onChange: (val) => {
+        selectedVec = vectors.find(v => v.vec === parseInt(val));
+        render();
+      }
+    });
+
+    const cv = OS.canvas(host, {
+      height: 180,
+      label: 'Interrupt vector table lookup',
+      draw: (ctx, w, h) => {
+        // Step 1: Hardware Assertion
+        ctx.fillStyle = OS.rgba(OS.C.rose, 0.15);
+        ctx.strokeStyle = OS.C.rose;
+        ctx.roundRect(25, 30, 150, 75, 6);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = OS.C.rose;
+        ctx.font = OS.font(11, 'mono', 600);
+        ctx.fillText('1. HARDWARE IRQ', 35, 52);
+        ctx.font = OS.font(10, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        ctx.fillText(`Vector: ${selectedVec.vec}`, 35, 74);
+        ctx.fillText(selectedVec.type, 35, 92);
+
+        // Step 2: IDT Lookup
+        const idtX = 200;
+        ctx.fillStyle = OS.C.sunk;
+        ctx.strokeStyle = OS.C.line;
+        ctx.roundRect(idtX, 30, 160, 75, 6);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = OS.C.accent;
+        ctx.font = OS.font(11, 'mono', 600);
+        ctx.fillText('2. IDT TABLE (IDTR)', idtX + 10, 52);
+        ctx.font = OS.font(10, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        ctx.fillText(`IDT[${selectedVec.vec}] → Gate`, idtX + 10, 74);
+        ctx.fillText('Switches to Ring 0', idtX + 10, 92);
+
+        // Step 3: ISR Handler
+        const isrX = idtX + 185;
+        ctx.fillStyle = OS.rgba(OS.C.green, 0.15);
+        ctx.strokeStyle = OS.C.green;
+        ctx.roundRect(isrX, 30, Math.min(220, w - isrX - 25), 75, 6);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = OS.C.green;
+        ctx.font = OS.font(11, 'mono', 600);
+        ctx.fillText('3. KERNEL ISR HANDLER', isrX + 10, 52);
+        ctx.font = OS.font(10, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        ctx.fillText(selectedVec.handler.slice(0, 24), isrX + 10, 74);
+        ctx.fillText('IRET / SYSRET return', isrX + 10, 92);
+      }
+    });
+
+    const readout = OS.readout(host);
+    function render() {
+      cv.redraw();
+      readout.innerHTML = `
+        <b>Interrupt Handling Pipeline:</b><br>
+        • <b>Event:</b> <span class="hl">${selectedVec.name}</span> | • <b>Handler:</b> <code>${selectedVec.handler}</code><br>
+        • <b>Action:</b> ${selectedVec.phase}
+      `;
+    }
     render();
   });
 

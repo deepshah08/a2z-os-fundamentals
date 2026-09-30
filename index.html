@@ -185,6 +185,9 @@ Thread = Stack + Program Counter + CPU Register State</div>
     <li>If switching within the same process, the kernel leaves the page table register (CR3) untouched, preserving TLB cache lines.</li>
     <li>The kernel loads Thread 2's register state and jumps to its saved instruction pointer (RIP).</li>
   </ol>
+  <figure class="viz" data-viz="threadStacks">
+    <figcaption>Thread stack layout in a shared address space. Switch active threads to see register context preservation without CR3 page table flushes.</figcaption>
+  </figure>
 </section>
 
 <section id="interrupts" class="chapter">
@@ -193,9 +196,12 @@ Thread = Stack + Program Counter + CPU Register State</div>
   <p>An operating system is fundamentally an <b>event-driven state machine</b>. CPU execution is steered by three mechanisms:</p>
   <dl class="defs">
     <dt>Hardware Interrupt (IRQ)</dt><dd>An asynchronous signal from hardware devices (NIC received a packet, SSD finished reading a block, timer ticked). The CPU pauses whatever it is doing to run the Interrupt Service Routine (ISR).</dd>
-    <dt>Trap / Exception</dt><dd>A synchronous event caused by an instruction (divide-by-zero, page fault, breakpoint, or intentional <code>syscall</code>).</dd>
+    <dt>Trap / Exception</dt><dd>An synchronous event caused by an instruction (divide-by-zero, page fault, breakpoint, or intentional <code>syscall</code>).</dd>
     <dt>POSIX Signal</dt><dd>A software-level notification delivered by the kernel to a process (e.g. <code>SIGINT</code> on Ctrl+C, <code>SIGSEGV</code> on invalid memory access, <code>SIGKILL</code>).</dd>
   </dl>
+  <figure class="viz" data-viz="interruptPipeline">
+    <figcaption>Interrupt Vector Table (IDT) lookup pipeline from hardware IRQ assertion to kernel ISR dispatch and return.</figcaption>
+  </figure>
   <div class="callout note">
     <p class="callout-label">Top-Half vs Bottom-Half</p>
     <p>Hardware interrupt handlers must finish in microseconds to keep the system responsive. Modern kernels split interrupt handling into two stages: the <b>top-half</b> (acknowledges hardware, copies data to a buffer, schedules a softirq) and the <b>bottom-half</b> (deferred work run by kernel threads like <code>ksoftirqd</code>).</p>
@@ -228,6 +234,9 @@ Thread = Stack + Program Counter + CPU Register State</div>
   <p>Early computers gave applications direct access to physical memory. If an application had a bug, it could overwrite the operating system or other programs. Modern systems provide an <b>address space</b>: an isolated range of virtual addresses starting at zero.</p>
   <div class="formula">Physical Address = Virtual Address + Base Register        (Subject to: Virtual Address < Bound Register)</div>
   <p>The simplest hardware relocation mechanism used a <b>Base and Bound</b> pair. If a program attempts to access an address beyond its bound register, the hardware CPU halts execution and fires a hardware segmentation fault trap.</p>
+  <figure class="viz" data-viz="baseBounds">
+    <figcaption>Hardware Base &amp; Bound Relocation. Notice how exceeding the bound register triggers an immediate hardware segmentation fault exception.</figcaption>
+  </figure>
   <div class="callout analogy">
     <p class="callout-label">Analogy</p>
     <p>A shipping company assigning private PO boxes. When you send mail to "Apartment 4", the postal depot translates that to "Building 12, Floor 3, Door 4". You never need to know the physical coordinates of the brick building.</p>
@@ -298,6 +307,9 @@ Thread = Stack + Program Counter + CPU Register State</div>
   <p>When the sum of the working sets of all running processes exceeds total physical RAM, the operating system enters a catastrophic state known as <b>thrashing</b>.</p>
   <div class="formula">Working Set W(t, Δ) = { pages referenced in time interval [t − Δ, t] }</div>
   <p>During thrashing, every process is waiting on page faults to load pages from swap, and every newly loaded page immediately evicts another process's active page. CPU utilization drops to near zero while disk I/O sits at 100% saturation.</p>
+  <figure class="viz" data-viz="thrashingCurve">
+    <figcaption>Working Set memory pressure and thrashing dynamics. Notice how CPU throughput collapses when memory demand exceeds physical RAM.</figcaption>
+  </figure>
   <div class="callout note">
     <p class="callout-label">The Linux OOM Killer</p>
     <p>To recover from runaway memory exhaustion, the Linux kernel invokes the <b>Out-Of-Memory (OOM) Killer</b>. It calculates an <code>oom_score</code> for every process based on RAM consumption and priority, sending <code>SIGKILL</code> to the worst offender to liberate memory.</p>
@@ -350,6 +362,9 @@ LOCK CMPXCHG %rbx, (lock_address)</div>
     <dt>Compare-And-Swap (CAS)</dt><dd>Compares memory value with an expected value; if equal, swaps in new value atomically.</dd>
     <dt>Spinlock</dt><dd>A lock where a thread loops repeatedly ("spins") checking the lock variable until it becomes free. Fast for tiny waits (&lt;50ns), but wastes 100% of a CPU core if the lock holder is descheduled.</dd>
   </dl>
+  <figure class="viz" data-viz="spinlockSim">
+    <figcaption>Atomic Compare-and-Swap (CAS) and Spinlock. Competing threads burn CPU cycles in a busy-wait loop until the lock variable is released.</figcaption>
+  </figure>
 </section>
 
 <section id="condvars" class="chapter">
@@ -371,6 +386,9 @@ LOCK CMPXCHG %rbx, (lock_address)</div>
   <p>Invented by Edsger Dijkstra in 1965, a <b>semaphore</b> is an integer variable with two atomic operations: <code>sem_wait()</code> (or <code>P</code> for <i>proberen</i>, "to test") and <code>sem_post()</code> (or <code>V</code> for <i>verhogen</i>, "to increment").</p>
   <div class="formula">sem_wait(s):  s--; if (s < 0) sleep();
 sem_post(s):  s++; if (s <= 0) wake_one();</div>
+  <figure class="viz" data-viz="rwLock">
+    <figcaption>Reader-Writer Lock Coordinator. Multiple concurrent readers share access, while writers demand 100% exclusive access.</figcaption>
+  </figure>
   <ul class="bullets">
     <li><b>Binary Semaphore:</b> Initialized to 1. Acts identically to a mutual exclusion lock.</li>
     <li><b>Counting Semaphore:</b> Initialized to N. Used as a resource counter (e.g., managing a pool of N database connections).</li>
@@ -397,6 +415,9 @@ sem_post(s):  s++; if (s <= 0) wake_one();</div>
   <p class="ch-num">20</p>
   <h2>Lock-Free &amp; Concurrency Frontiers</h2>
   <p>Locks suffer from priority inversion, convoying, and thread crashes inside critical sections. Modern high-throughput systems employ <b>lock-free algorithms</b> that guarantee system-wide progress using atomic instructions.</p>
+  <figure class="viz" data-viz="rcuSim">
+    <figcaption>Read-Copy-Update (RCU) pointer swing and grace-period memory reclamation in the Linux kernel.</figcaption>
+  </figure>
   <ul class="bullets">
     <li><b>Lock-Free Queues (Michael-Scott):</b> Uses atomic CAS to append nodes and update tail pointers concurrently.</li>
     <li><b>The ABA Problem:</b> If memory at address A is freed and re-allocated at address A with different data, a naive CAS check will falsely succeed. Solved using generational tags or <b>hazard pointers</b>.</li>
@@ -465,6 +486,9 @@ sem_post(s):  s++; if (s <= 0) wake_one();</div>
     <li>Once committed to the journal, updates are written to their final filesystem locations (Checkpointing).</li>
     <li>If a crash occurs, reboot recovery simply scans the journal: committed transactions are replayed, and uncommitted transactions are discarded in seconds without needing a full-disk <code>fsck</code> scan!</li>
   </ol>
+  <figure class="viz" data-viz="journalCrash">
+    <figcaption>Write-Ahead Logging (WAL) and crash recovery. Transactions committed to the journal guarantee instant post-crash recovery.</figcaption>
+  </figure>
 </section>
 
 <section id="iouring" class="chapter">
@@ -489,6 +513,9 @@ sem_post(s):  s++; if (s <= 0) wake_one();</div>
     <dt>Namespaces (What you can SEE)</dt><dd>Virtualizes system resources. <b>PID</b> (process sees itself as PID 1), <b>Mount</b> (private root filesystem), <b>Net</b> (private IP and routing table), <b>IPC</b>, <b>UTS</b> (hostname), and <b>User</b> (maps container root to unprivileged host UID).</dd>
     <dt>Control Groups - cgroups v2 (What you can USE)</dt><dd>Enforces strict resource limits. Governs CPU bandwidth quota (e.g. 50% CPU), memory caps (kill on exceeding limit), I/O weight, and network priority.</dd>
   </dl>
+  <figure class="viz" data-viz="containerMatrix">
+    <figcaption>Linux container isolation. Toggle between isolated container PID namespace view and global host kernel view.</figcaption>
+  </figure>
   <div class="callout analogy">
     <p class="callout-label">Analogy</p>
     <p>Virtual machines are like detached suburban houses: each has its own foundation, plumbing, and roof (its own guest kernel). Containers are like apartments in an apartment building: they share the same building foundation and plumbing (the host kernel), but have private keyed doors and separate utility meters.</p>
@@ -499,6 +526,9 @@ sem_post(s):  s++; if (s <= 0) wake_one();</div>
   <p class="ch-num">27</p>
   <h2>In-Kernel Bytecode: eBPF</h2>
   <p>Historically, extending the Linux kernel required writing kernel modules (risking kernel panics) or waiting years for new kernel releases. <b>eBPF (Extended Berkeley Packet Filter)</b> revolutionizes systems engineering by allowing developers to run sandboxed, high-performance bytecode directly inside the kernel at runtime.</p>
+  <figure class="viz" data-viz="ebpfSim">
+    <figcaption>In-flight eBPF verifier proving memory safety, bounded loops, and preventing kernel crashes before JIT compilation.</figcaption>
+  </figure>
   <ul class="bullets">
     <li><b>Kernel In-Flight Verifier:</b> Statically verifies every program before execution: proves it cannot access invalid pointers, has no unbounded loops, and cannot freeze the kernel.</li>
     <li><b>JIT Compilation:</b> Compiles verified bytecode into native machine instructions with zero overhead.</li>

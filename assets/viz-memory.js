@@ -535,4 +535,156 @@
     render();
   });
 
+  /* --------------------------------------------------------------------------
+   * 6. Base & Bound Dynamic Relocation Simulator
+   * -------------------------------------------------------------------------- */
+  OS.register('baseBounds', function (host) {
+    const base = 0x8000;  // 32 KB
+    const bound = 0x0400; // 1 KB limit
+    let vAddr = 0x0150;   // 336 bytes
+
+    const controls = OS.controls(host);
+    const slider = OS.slider(controls, {
+      id: 'base-bound-vaddr',
+      label: 'Virtual Address:',
+      min: 0,
+      max: 1500,
+      step: 50,
+      value: vAddr,
+      format: (v) => `0x${v.toString(16).toUpperCase()}`,
+      onInput: (v) => { vAddr = v; render(); }
+    });
+
+    const cv = OS.canvas(host, {
+      height: 180,
+      label: 'Base and bound hardware relocation',
+      draw: (ctx, w, h) => {
+        const isValid = vAddr < bound;
+        const pAddr = base + vAddr;
+
+        // Base & Bound Registers Box
+        ctx.fillStyle = OS.C.sunk;
+        ctx.strokeStyle = OS.C.line;
+        ctx.roundRect(25, 25, 170, 120, 6);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = OS.C.accent;
+        ctx.font = OS.font(11, 'mono', 600);
+        ctx.fillText('CPU REGISTERS', 35, 45);
+        ctx.font = OS.font(10, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        ctx.fillText(`Base:  0x${base.toString(16).toUpperCase()} (32KB)`, 35, 72);
+        ctx.fillText(`Bound: 0x${bound.toString(16).toUpperCase()} (1KB)`, 35, 95);
+        ctx.fillText(`VAddr: 0x${vAddr.toString(16).toUpperCase()}`, 35, 118);
+
+        // Comparator / ALU
+        const aluX = 220;
+        ctx.fillStyle = isValid ? OS.rgba(OS.C.green, 0.12) : OS.rgba(OS.C.rose, 0.15);
+        ctx.strokeStyle = isValid ? OS.C.green : OS.C.rose;
+        ctx.lineWidth = 2;
+        ctx.roundRect(aluX, 25, Math.min(300, w - aluX - 25), 120, 6);
+        ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = isValid ? OS.C.green : OS.C.rose;
+        ctx.font = OS.font(12, 'mono', 600);
+        ctx.fillText(isValid ? 'HARDWARE RELOCATION SUCCESS' : 'HARDWARE TRAP: OUT OF BOUNDS!', aluX + 15, 52);
+        ctx.font = OS.font(10, 'mono', 400);
+        ctx.fillStyle = OS.C.ink;
+        if (isValid) {
+          ctx.fillText(`Check: VAddr (0x${vAddr.toString(16).toUpperCase()}) < Bound (0x${bound.toString(16).toUpperCase()}) -> OK`, aluX + 15, 80);
+          ctx.font = OS.font(12, 'mono', 600);
+          ctx.fillStyle = OS.C.accent;
+          ctx.fillText(`Physical Addr = 0x${pAddr.toString(16).toUpperCase()} (Base + VAddr)`, aluX + 15, 110);
+        } else {
+          ctx.fillText(`Check: VAddr (0x${vAddr.toString(16).toUpperCase()}) >= Bound (0x${bound.toString(16).toUpperCase()}) -> VIOLATION`, aluX + 15, 80);
+          ctx.font = OS.font(11, 'mono', 600);
+          ctx.fillStyle = OS.C.rose;
+          ctx.fillText('CPU raises SIGSEGV (Segmentation Fault)', aluX + 15, 110);
+        }
+      }
+    });
+
+    const readout = OS.readout(host);
+    function render() {
+      cv.redraw();
+      if (vAddr < bound) {
+        readout.innerHTML = `<b>Status:</b> Virtual address <code>0x${vAddr.toString(16).toUpperCase()}</code> is within bound (1024 bytes). Translates to physical RAM address <code>0x${(base + vAddr).toString(16).toUpperCase()}</code>.`;
+      } else {
+        readout.innerHTML = `<b style="color:var(--rose)">SEGMENTATION FAULT (SIGSEGV):</b> Virtual address <code>0x${vAddr.toString(16).toUpperCase()}</code> exceeds process bound of 1KB (0x400). Hardware immediately halts process execution.`;
+      }
+    }
+    render();
+  });
+
+  /* --------------------------------------------------------------------------
+   * 7. Working Set & Thrashing Curve Simulator
+   * -------------------------------------------------------------------------- */
+  OS.register('thrashingCurve', function (host) {
+    let workingSetGB = 6;
+    const physicalRamGB = 8;
+
+    const controls = OS.controls(host);
+    OS.slider(controls, {
+      id: 'working-set-slider',
+      label: 'Working Set Demand:',
+      min: 2,
+      max: 20,
+      step: 1,
+      value: workingSetGB,
+      format: (v) => `${v} GB`,
+      onInput: (v) => { workingSetGB = v; render(); }
+    });
+
+    const cv = OS.canvas(host, {
+      height: 180,
+      label: 'Working set memory pressure and thrashing curve',
+      draw: (ctx, w, h) => {
+        const isThrashing = workingSetGB > physicalRamGB;
+        const faultRate = isThrashing ? Math.min(100, Math.round(Math.pow((workingSetGB - physicalRamGB), 1.6) * 12 + 10)) : Math.round(workingSetGB * 1.5);
+        const cpuUtil = isThrashing ? Math.max(3, Math.round(95 - faultRate * 0.9)) : 95;
+
+        // RAM Capacity Bar
+        ctx.fillStyle = OS.C.sunk;
+        ctx.strokeStyle = OS.C.line;
+        ctx.roundRect(25, 25, w - 50, 40, 6);
+        ctx.fill(); ctx.stroke();
+
+        const barFillW = Math.min(w - 50, ((w - 50) * (workingSetGB / 20)));
+        ctx.fillStyle = isThrashing ? OS.rgba(OS.C.rose, 0.6) : OS.rgba(OS.C.teal, 0.6);
+        ctx.fillRect(25, 25, barFillW, 40);
+
+        ctx.fillStyle = OS.C.ink;
+        ctx.font = OS.font(11, 'mono', 600);
+        ctx.fillText(`Demand: ${workingSetGB} GB / Physical RAM: ${physicalRamGB} GB`, 35, 49);
+
+        // Metrics Readout Bars
+        const mY = 85;
+        ctx.font = OS.font(11, 'mono', 500);
+        ctx.fillStyle = OS.C.ink;
+        ctx.fillText(`CPU Throughput: ${cpuUtil}%`, 25, mY + 15);
+        ctx.fillStyle = OS.C.sunk;
+        ctx.fillRect(190, mY + 5, w - 215, 14);
+        ctx.fillStyle = isThrashing ? OS.C.rose : OS.C.green;
+        ctx.fillRect(190, mY + 5, ((w - 215) * cpuUtil) / 100, 14);
+
+        ctx.fillStyle = OS.C.ink;
+        ctx.fillText(`Page Fault Rate: ${faultRate}k/s`, 25, mY + 45);
+        ctx.fillStyle = OS.C.sunk;
+        ctx.fillRect(190, mY + 35, w - 215, 14);
+        ctx.fillStyle = isThrashing ? OS.C.rose : OS.C.amber;
+        ctx.fillRect(190, mY + 35, ((w - 215) * faultRate) / 100, 14);
+      }
+    });
+
+    const readout = OS.readout(host);
+    function render() {
+      cv.redraw();
+      if (workingSetGB <= physicalRamGB) {
+        readout.innerHTML = `<b>Status: Healthy Paging.</b> Working set (${workingSetGB} GB) fits within physical RAM (${physicalRamGB} GB). CPU utilization is high (~95%) and page faults are negligible.`;
+      } else {
+        readout.innerHTML = `<b style="color:var(--rose)">CRITICAL: THRASHING DETECTED!</b> Working set (${workingSetGB} GB) exceeds physical RAM (${physicalRamGB} GB). The system spends 97% of time servicing swap page faults. CPU throughput collapses.`;
+      }
+    }
+    render();
+  });
+
 })();
