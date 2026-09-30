@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Operating Systems, Cycle by Cycle — A Visual Field Guide</title>
+<meta name="description" content="An interactive, technical field guide to operating systems: dual-mode execution, context switches, scheduling, page tables, TLBs, concurrency, locks, semaphores, crash consistency, and modern systems from eBPF to io_uring.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<meta name="color-scheme" content="light dark">
+<script>
+{
+  const saved = localStorage.getItem("os-theme");
+  if (saved) document.documentElement.setAttribute("data-theme", saved);
+}
+</script>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-bar">
+    <div class="brand">
+      <span>Operating Systems, Cycle by Cycle</span>
+      <span class="brand-badge">2026 EDITION</span>
+    </div>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch light or dark theme">Toggle Theme</button>
+  </div>
+  <div class="hero">
+    <div class="hero-text">
+      <p class="eyebrow">A visual field guide · 2026 edition</p>
+      <h1>Operating Systems, Cycle&nbsp;by&nbsp;Cycle</h1>
+      <p class="lede">Every computer from a smartphone to a datacenter supercomputer runs on the same profound abstraction: the Operating System transforms raw hardware—registers, physical DRAM, asynchronous interrupts, and storage blocks—into clean, protected, virtual environments. This guide takes that machinery apart, from dual-mode hardware traps and multi-level page tables to mutexes, crash-consistent journals, eBPF, and io_uring. Each concept features a live interactive simulator.</p>
+      <p class="hero-hint">Explore the CPU scheduler on the right. Switch policies between Round Robin, FIFO, and STCF, or adjust the time quantum slider.</p>
+    </div>
+    <figure class="viz viz-hero" data-viz="cpuScheduler">
+      <figcaption>An interactive CPU scheduler executing concurrent processes across time. Slices show scheduled runtime; readouts quantify average turnaround time and response latency.</figcaption>
+    </figure>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="toc" aria-label="Table of Contents">
+    <details class="toc-details" id="toc-details" open>
+      <summary>Contents</summary>
+      <ol class="toc-list">
+        <li class="toc-part">I · Virtualizing the CPU</li>
+        <li><a href="#dual-mode"><span>01</span>The Dual-Mode Illusion</a></li>
+        <li><a href="#processes"><span>02</span>The Process &amp; The PCB</a></li>
+        <li><a href="#scheduling"><span>03</span>CPU Scheduling: Classic</a></li>
+        <li><a href="#mlfq-cfs"><span>04</span>Advanced: MLFQ &amp; CFS</a></li>
+        <li><a href="#threads"><span>05</span>Threads &amp; Context Switches</a></li>
+        <li><a href="#interrupts"><span>06</span>Interrupts, Traps &amp; Signals</a></li>
+        <li><a href="#numa"><span>07</span>Multi-Core &amp; NUMA</a></li>
+
+        <li class="toc-part">II · Virtualizing Memory</li>
+        <li><a href="#address-space"><span>08</span>Address Space &amp; Relocation</a></li>
+        <li><a href="#paging"><span>09</span>Paging &amp; Page Tables</a></li>
+        <li><a href="#tlb"><span>10</span>The TLB Translation Cache</a></li>
+        <li><a href="#multilevel"><span>11</span>Multi-Level Page Tables</a></li>
+        <li><a href="#replacement"><span>12</span>Page Replacement &amp; LRU</a></li>
+        <li><a href="#swapping"><span>13</span>Swapping &amp; Thrashing</a></li>
+        <li><a href="#cow"><span>14</span>COW, mmap &amp; Zero-Copy</a></li>
+
+        <li class="toc-part">III · Concurrency &amp; Locks</li>
+        <li><a href="#races"><span>15</span>Race Conditions &amp; Mutexes</a></li>
+        <li><a href="#spinlocks"><span>16</span>Hardware Primitives &amp; CAS</a></li>
+        <li><a href="#condvars"><span>17</span>Condition Variables &amp; Futex</a></li>
+        <li><a href="#semaphores"><span>18</span>Dijkstra's Semaphores</a></li>
+        <li><a href="#deadlock"><span>19</span>Deadlock &amp; Coffman Rules</a></li>
+        <li><a href="#lockfree"><span>20</span>Lock-Free &amp; RCU</a></li>
+
+        <li class="toc-part">IV · Persistence &amp; Systems</li>
+        <li><a href="#io-dma"><span>21</span>Hardware I/O &amp; DMA</a></li>
+        <li><a href="#storage"><span>22</span>Disks, Flash SSDs &amp; NVMe</a></li>
+        <li><a href="#inodes"><span>23</span>File Systems &amp; Inodes</a></li>
+        <li><a href="#journaling"><span>24</span>Crash Consistency &amp; WAL</a></li>
+        <li><a href="#iouring"><span>25</span>epoll, Event Loops &amp; io_uring</a></li>
+        <li><a href="#containers"><span>26</span>Namespaces &amp; cgroups</a></li>
+        <li><a href="#ebpf"><span>27</span>In-Kernel Bytecode: eBPF</a></li>
+        <li><a href="#landscape"><span>28</span>The 2026 Systems Landscape</a></li>
+        <li><a href="#glossary"><span>29</span>Glossary &amp; Systems Numbers</a></li>
+      </ol>
+    </details>
+  </nav>
+
+  <main>
+
+<!-- ============================ PART I ============================ -->
+<div class="part-head" id="part-1">
+  <span>Part I</span>
+  <h2 class="part-title">Virtualizing the CPU &amp; Execution</h2>
+  <p>How an operating system transforms one or more physical CPU cores into the illusion of hundreds of simultaneous, private, protected computers.</p>
+</div>
+
+<section id="dual-mode" class="chapter">
+  <p class="ch-num">01</p>
+  <h2>The Dual-Mode Illusion</h2>
+  <p>To safely share physical hardware among untrusted programs, CPUs enforce <b>hardware privilege levels</b> (or rings). On x86-64, user applications execute in <b>Ring 3 (User Mode)</b>, where direct hardware I/O instructions (`in`/`out`, disabling interrupts, modifying page table pointers) trigger a hardware exception. The operating system kernel executes in <b>Ring 0 (Supervisor/Kernel Mode)</b> with unrestricted hardware control.</p>
+  <div class="formula">User Mode (Ring 3) ──[ SYSCALL / Trap ]──> Hardware Switches Ring to 0 ──> Kernel Dispatch</div>
+  <p>A transition from user mode to kernel mode follows a rigid hardware-enforced ceremony:</p>
+  <ol class="steps">
+    <li>The user process writes system call arguments to CPU registers (%rdi, %rsi, %rdx) and stores the call number in %rax.</li>
+    <li>The process executes the <code>syscall</code> instruction (or an interrupt like <code>int 0x80</code>).</li>
+    <li>The CPU hardware saves user execution context (Instruction Pointer RIP, Stack Pointer RSP, CPU Flags) onto the thread's isolated kernel stack.</li>
+    <li>The CPU flips its hardware privilege level from 3 to 0 and jumps to a pre-registered entry point stored in an internal Model-Specific Register (MSR).</li>
+    <li>The kernel validates pointers, executes the service, places the return value in %rax, and executes <code>sysret</code> to return to Ring 3.</li>
+  </ol>
+  <div class="callout analogy">
+    <p class="callout-label">Analogy</p>
+    <p>A high-security bank vault. Bank customers (user programs) cannot walk behind the counter or handle safety deposit boxes directly. They must approach a teller window (the system call interface), fill out an official slip (arguments), and let the authorized bank staff (the kernel) perform the operation on their behalf.</p>
+  </div>
+  <figure class="viz" data-viz="dualMode">
+    <figcaption>Step through a user-space <code>read()</code> system call. Notice how hardware mode transitions, stack switches, and validation protect kernel memory from user tampering.</figcaption>
+  </figure>
+  <div class="callout note">
+    <p class="callout-label">Meltdown &amp; KPTI</p>
+    <p>Until 2018, operating systems kept kernel page tables mapped into the upper address space of every user process for maximum syscall speed. The <b>Meltdown</b> CPU vulnerability revealed that speculative execution allowed user code to read kernel memory across the ring boundary. Modern kernels employ <b>KPTI (Kernel Page Table Isolation)</b>, forcing a complete page table switch on every syscall entry and exit.</p>
+  </div>
+</section>
+
+<section id="processes" class="chapter">
+  <p class="ch-num">02</p>
+  <h2>The Process &amp; The PCB</h2>
+  <p>A <b>process</b> is an operating system's abstraction for a running program. It consists of an isolated virtual address space, memory mappings, CPU register state, and open file descriptors. The kernel manages each process via a data structure called the <b>Process Control Block (PCB)</b> (in Linux, <code>struct task_struct</code>).</p>
+  <figure class="viz" data-viz="processLifecycle">
+    <figcaption>Interactive process state machine. Trigger state transitions to observe how the kernel updates scheduling queues, register snapshots, and PCB metadata.</figcaption>
+  </figure>
+  <dl class="defs">
+    <dt>Ready</dt><dd>The process is fully loaded in memory and waiting for the CPU scheduler to assign it a timeslice.</dd>
+    <dt>Running</dt><dd>The process instructions are actively executing on a physical CPU core.</dd>
+    <dt>Blocked / Waiting</dt><dd>The process has yielded the CPU while waiting for an external event (disk I/O, network packet, lock acquisition, or sleep timer).</dd>
+    <dt>Zombie</dt><dd>The process has finished execution via <code>exit()</code>, but its entry remains in the process table so its parent can read its exit code via <code>waitpid()</code>.</dd>
+  </dl>
+  <div class="callout analogy">
+    <p class="callout-label">Analogy</p>
+    <p>A chef cooking several recipes simultaneously on a single burner. Each recipe has its own prep tray, recipe card, and bowl (the PCB and address space). The chef swaps which pan is currently on the burner, marking where they left off on the card before setting it aside.</p>
+  </div>
+</section>
+
+<section id="scheduling" class="chapter">
+  <p class="ch-num">03</p>
+  <h2>CPU Scheduling: Classic Policies</h2>
+  <p>When multiple processes are in the <b>Ready</b> state, the CPU scheduler decides which one runs next. Schedulers optimize for two competing metrics:</p>
+  <div class="formula">Turnaround Time = T_completion − T_arrival
+Response Time = T_first_run − T_arrival</div>
+  <dl class="defs">
+    <dt>FIFO (First-In, First-Out)</dt><dd>Runs jobs strictly in arrival order. Vulnerable to the <b>convoy effect</b>: a 100-second job forces rapid 1-second interactive jobs to wait in line.</dd>
+    <dt>SJF (Shortest Job First)</dt><dd>Executes the shortest burst time first. Provably optimal for average turnaround time among non-preemptive algorithms, but requires knowing the future.</dd>
+    <dt>STCF (Shortest Time-to-Completion First)</dt><dd>Preemptive SJF: when a new shorter job arrives, the scheduler immediately pauses the current longer job to run the shorter one.</dd>
+    <dt>Round Robin (RR)</dt><dd>Runs each process for a fixed <b>Time Quantum (time slice)</b> before preempting it and placing it at the back of the run queue. Optimizes response time.</dd>
+  </dl>
+  <div class="callout note">
+    <p class="callout-label">The Quantum Trade-off</p>
+    <p>A tiny time quantum (e.g. 1ms) makes all processes feel interactive, but CPU cycles are lost to context switch overhead (cache misses, pipeline flushes). A huge time quantum (e.g. 500ms) amortizes switching costs but makes the system feel sluggish and non-responsive.</p>
+  </div>
+</section>
+
+<section id="mlfq-cfs" class="chapter">
+  <p class="ch-num">04</p>
+  <h2>Advanced Scheduling: MLFQ &amp; CFS</h2>
+  <p>Real-world workloads contain a mix of interactive tasks (keystrokes, mouse moves, web servers) and long-running batch compute (video encoders, ML training). Schedulers cannot know job lengths in advance, so they must learn from history.</p>
+  <figure class="viz" data-viz="mlfq">
+    <figcaption>Multi-Level Feedback Queue (MLFQ). Interactive jobs that yield CPU early stay at high priority; CPU-bound jobs exhaust their quantum and get demoted. Priority Boost periodically resets all jobs to prevent starvation.</figcaption>
+  </figure>
+  <h3>The Linux Completely Fair Scheduler (CFS)</h3>
+  <p>Linux replaced classical queue scheduling with the <b>Completely Fair Scheduler (CFS)</b>. CFS tracks the virtual runtime (<code>vruntime</code>) of every task. Tasks are organized in a self-balancing red-black tree keyed by <code>vruntime</code>. The scheduler always picks the leftmost task (the one that has received the least CPU time).</p>
+  <ul class="bullets">
+    <li><b>Nice Values:</b> Unix nice levels (-20 to +19) map to weight factors. A high-priority process advances its <code>vruntime</code> more slowly, receiving proportionally more CPU cycles.</li>
+    <li><b>Scalability:</b> Selecting the next task is O(1) by caching the leftmost node, and tree insertions take O(log N).</li>
+  </ul>
+</section>
+
+<section id="threads" class="chapter">
+  <p class="ch-num">05</p>
+  <h2>Threads &amp; Context Switches</h2>
+  <p>A <b>thread</b> is an independent stream of execution within a process. While processes isolate their memory, all threads within a single process share the <b>same address space</b> (Code, Global Data, and Heap). However, each thread maintains its own private <b>Thread Control Block (TCB)</b>, CPU registers, and execution stack.</p>
+  <div class="formula">Process = Virtual Address Space + File Descriptors
+Thread = Stack + Program Counter + CPU Register State</div>
+  <p>When the kernel performs a <b>thread context switch</b>:</p>
+  <ol class="steps">
+    <li>The timer interrupt triggers kernel code execution.</li>
+    <li>The kernel saves Thread 1's general-purpose registers (RAX, RBX, RCX...) and stack pointer (RSP) to its TCB.</li>
+    <li>If switching within the same process, the kernel leaves the page table register (CR3) untouched, preserving TLB cache lines.</li>
+    <li>The kernel loads Thread 2's register state and jumps to its saved instruction pointer (RIP).</li>
+  </ol>
+</section>
+
+<section id="interrupts" class="chapter">
+  <p class="ch-num">06</p>
+  <h2>Interrupts, Traps &amp; Signals</h2>
+  <p>An operating system is fundamentally an <b>event-driven state machine</b>. CPU execution is steered by three mechanisms:</p>
+  <dl class="defs">
+    <dt>Hardware Interrupt (IRQ)</dt><dd>An asynchronous signal from hardware devices (NIC received a packet, SSD finished reading a block, timer ticked). The CPU pauses whatever it is doing to run the Interrupt Service Routine (ISR).</dd>
+    <dt>Trap / Exception</dt><dd>A synchronous event caused by an instruction (divide-by-zero, page fault, breakpoint, or intentional <code>syscall</code>).</dd>
+    <dt>POSIX Signal</dt><dd>A software-level notification delivered by the kernel to a process (e.g. <code>SIGINT</code> on Ctrl+C, <code>SIGSEGV</code> on invalid memory access, <code>SIGKILL</code>).</dd>
+  </dl>
+  <div class="callout note">
+    <p class="callout-label">Top-Half vs Bottom-Half</p>
+    <p>Hardware interrupt handlers must finish in microseconds to keep the system responsive. Modern kernels split interrupt handling into two stages: the <b>top-half</b> (acknowledges hardware, copies data to a buffer, schedules a softirq) and the <b>bottom-half</b> (deferred work run by kernel threads like <code>ksoftirqd</code>).</p>
+  </div>
+</section>
+
+<section id="numa" class="chapter">
+  <p class="ch-num">07</p>
+  <h2>Multi-Core &amp; NUMA</h2>
+  <p>Modern servers have multiple CPU sockets, each with its own memory controller and local DRAM. This is <b>Non-Uniform Memory Access (NUMA)</b>. Accessing RAM attached to your local CPU socket takes ~60ns, while accessing RAM attached to a remote socket over an interconnect (Intel UPI, AMD Infinity Fabric) takes ~140ns.</p>
+  <figure class="viz" data-viz="mesi">
+    <figcaption>The MESI Cache Coherence Protocol (Modified, Exclusive, Shared, Invalid). Watch how bus snooping ensures multiple CPU cores see a consistent view of shared cache lines.</figcaption>
+  </figure>
+  <ul class="bullets">
+    <li><b>Cache Lines:</b> CPUs transfer memory in 64-byte chunks called cache lines.</li>
+    <li><b>False Sharing:</b> When two independent threads on different cores update independent variables that happen to live on the same 64-byte cache line, the CPU cores constantly invalidate each other's L1 caches, devastating performance.</li>
+  </ul>
+</section>
+
+<!-- ============================ PART II ============================ -->
+<div class="part-head" id="part-2">
+  <span>Part II</span>
+  <h2 class="part-title">Virtualizing Memory</h2>
+  <p>How the operating system provides every process with the illusion of a massive, contiguous, private address space on top of fragmented physical RAM.</p>
+</div>
+
+<section id="address-space" class="chapter">
+  <p class="ch-num">08</p>
+  <h2>Address Space &amp; Relocation</h2>
+  <p>Early computers gave applications direct access to physical memory. If an application had a bug, it could overwrite the operating system or other programs. Modern systems provide an <b>address space</b>: an isolated range of virtual addresses starting at zero.</p>
+  <div class="formula">Physical Address = Virtual Address + Base Register        (Subject to: Virtual Address < Bound Register)</div>
+  <p>The simplest hardware relocation mechanism used a <b>Base and Bound</b> pair. If a program attempts to access an address beyond its bound register, the hardware CPU halts execution and fires a hardware segmentation fault trap.</p>
+  <div class="callout analogy">
+    <p class="callout-label">Analogy</p>
+    <p>A shipping company assigning private PO boxes. When you send mail to "Apartment 4", the postal depot translates that to "Building 12, Floor 3, Door 4". You never need to know the physical coordinates of the brick building.</p>
+  </div>
+</section>
+
+<section id="paging" class="chapter">
+  <p class="ch-num">09</p>
+  <h2>Paging &amp; Page Tables</h2>
+  <p>Base-and-bound and segmentation suffer from <b>external fragmentation</b>: free memory gets chopped into tiny unusable holes between processes. Operating systems solve this with <b>paging</b>: dividing virtual memory into fixed-size chunks called <b>pages</b> (typically 4 KB) and physical memory into matching <b>page frames</b>.</p>
+  <figure class="viz" data-viz="addressTranslation">
+    <figcaption>Virtual-to-Physical Address Translation. The hardware MMU uses the Virtual Page Number (VPN) as an index into the page table to find the Physical Frame Number (PFN), appending the offset unchanged.</figcaption>
+  </figure>
+  <dl class="defs">
+    <dt>Present Bit</dt><dd>1 if the page is currently in physical RAM; 0 if swapped to disk or unallocated.</dd>
+    <dt>Read/Write Bit</dt><dd>1 if the process has write permission; 0 for read-only pages (e.g. code/text).</dd>
+    <dt>User/Supervisor Bit</dt><dd>1 if accessible in Ring 3; 0 for kernel-only pages.</dd>
+    <dt>Dirty Bit</dt><dd>Set to 1 by hardware whenever memory on the page has been modified. Used during swapping to know if a page must be written back to disk.</dd>
+  </dl>
+</section>
+
+<section id="tlb" class="chapter">
+  <p class="ch-num">10</p>
+  <h2>The TLB Translation Cache</h2>
+  <p>Paging creates a huge performance bottleneck: every memory access requires reading the page table first, turning <b>1 memory access into 2</b>. Because physical RAM takes ~100ns, this would slow the CPU down by 50%.</p>
+  <p>The solution is a high-speed hardware cache in the CPU's Memory Management Unit (MMU) called the <b>Translation Lookaside Buffer (TLB)</b>.</p>
+  <figure class="viz" data-viz="tlb">
+    <figcaption>The TLB Translation Cache. A TLB hit resolves an address in 1 CPU cycle. A TLB miss forces a multi-cycle hardware page table walk across the memory bus.</figcaption>
+  </figure>
+  <div class="callout note">
+    <p class="callout-label">TLB Shootdowns &amp; PCID</p>
+    <p>Historically, a context switch required flushing the entire TLB (by reloading CR3). Modern CPUs support <b>PCID (Process Context Identifiers)</b> or <b>ASID</b> tags on each TLB entry, allowing translations from multiple processes to coexist in the TLB simultaneously.</p>
+  </div>
+</section>
+
+<section id="multilevel" class="chapter">
+  <p class="ch-num">11</p>
+  <h2>Multi-Level Page Tables</h2>
+  <p>In a 32-bit system with 4 KB pages, a linear page table has 2<sup>20</sup> entries (1 million). At 4 bytes per entry, that is <b>4 MB of page table overhead per process</b>. On 64-bit systems, a linear page table would require millions of gigabytes!</p>
+  <p>Operating systems solve this with <b>multi-level page tables</b>, which organize page tables as a tree. The top level is the <b>Page Directory</b>. If an entire range of virtual memory is unallocated, the corresponding directory pointer is set to null, and no second-level page table is created.</p>
+  <figure class="viz" data-viz="multiLevel">
+    <figcaption>Multi-Level Page Table Tree. Notice how sparse address spaces save over 99% of page table memory by omitting tables for unallocated address regions.</figcaption>
+  </figure>
+  <ul class="bullets">
+    <li><b>x86-64 4-Level Paging:</b> Splits the 48-bit virtual address into PML4 (9 bits) → PDPT (9 bits) → PD (9 bits) → PT (9 bits) + Offset (12 bits).</li>
+    <li><b>5-Level Paging (PAGING57):</b> Extends virtual address space to 57 bits (128 PB) for massive enterprise cloud servers.</li>
+  </ul>
+</section>
+
+<section id="replacement" class="chapter">
+  <p class="ch-num">12</p>
+  <h2>Page Replacement Policies</h2>
+  <p>When physical RAM is exhausted and a new page must be brought in from disk, the kernel must evict an existing page. The choice of which page to evict is governed by <b>page replacement algorithms</b>:</p>
+  <figure class="viz" data-viz="pageReplacement">
+    <figcaption>Page Replacement Arena. Step through a page reference sequence to compare FIFO and LRU fault rates and witness eviction behavior in real time.</figcaption>
+  </figure>
+  <dl class="defs">
+    <dt>Optimal (Belady / MIN)</dt><dd>Evicts the page that will not be accessed for the longest time in the future. Unachievable in practice, but serves as the theoretical benchmark.</dd>
+    <dt>FIFO (First-In, First-Out)</dt><dd>Evicts the oldest loaded page. Suffers from <b>Belady's Anomaly</b>: increasing physical page frames can paradoxically increase page faults!</dd>
+    <dt>LRU (Least Recently Used)</dt><dd>Evicts the page that has not been accessed for the longest time. Highly effective because software exhibits <b>temporal locality</b>.</dd>
+    <dt>Clock Algorithm (Second Chance)</dt><dd>An efficient approximation of LRU. A circular hand scans pages. If a page's reference bit is 1, it clears it to 0 and advances; if the bit is 0, it selects that page for eviction.</dd>
+  </dl>
+</section>
+
+<section id="swapping" class="chapter">
+  <p class="ch-num">13</p>
+  <h2>Swapping &amp; Thrashing</h2>
+  <p>When the sum of the working sets of all running processes exceeds total physical RAM, the operating system enters a catastrophic state known as <b>thrashing</b>.</p>
+  <div class="formula">Working Set W(t, Δ) = { pages referenced in time interval [t − Δ, t] }</div>
+  <p>During thrashing, every process is waiting on page faults to load pages from swap, and every newly loaded page immediately evicts another process's active page. CPU utilization drops to near zero while disk I/O sits at 100% saturation.</p>
+  <div class="callout note">
+    <p class="callout-label">The Linux OOM Killer</p>
+    <p>To recover from runaway memory exhaustion, the Linux kernel invokes the <b>Out-Of-Memory (OOM) Killer</b>. It calculates an <code>oom_score</code> for every process based on RAM consumption and priority, sending <code>SIGKILL</code> to the worst offender to liberate memory.</p>
+  </div>
+</section>
+
+<section id="cow" class="chapter">
+  <p class="ch-num">14</p>
+  <h2>COW, mmap &amp; Zero-Copy</h2>
+  <p>Virtual memory enables powerful systems optimizations beyond simple address isolation:</p>
+  <figure class="viz" data-viz="cow">
+    <figcaption>Copy-on-Write (COW) during <code>fork()</code>. Physical frames are shared read-only until a process writes, at which point a page fault duplicates only the modified frame.</figcaption>
+  </figure>
+  <ul class="bullets">
+    <li><b>Memory-Mapped Files (`mmap`):</b> Maps a file directly into a process's address space. Reading a memory pointer reads the file through the kernel page cache; writing to the pointer marks the page dirty.</li>
+    <li><b>Zero-Copy Networking:</b> Using system calls like <code>sendfile()</code> or <code>splice()</code>, data travels directly from disk page cache to the network card's DMA buffers without ever copying bytes into user-space buffers.</li>
+  </ul>
+</section>
+
+<!-- ============================ PART III ============================ -->
+<div class="part-head" id="part-3">
+  <span>Part III</span>
+  <h2 class="part-title">Concurrency &amp; Synchronization</h2>
+  <p>How multiple threads safely cooperate over shared state without data corruption, race conditions, or permanent deadlocks.</p>
+</div>
+
+<section id="races" class="chapter">
+  <p class="ch-num">15</p>
+  <h2>Race Conditions &amp; Mutexes</h2>
+  <p>A <b>race condition</b> occurs when multiple concurrent threads read and write shared data, and the final outcome depends on the non-deterministic order of execution and context switching.</p>
+  <figure class="viz" data-viz="raceCondition">
+    <figcaption>Step through assembly instructions of two threads executing <code>counter++</code>. Notice how preemption between the load and store instructions causes lost updates without a mutex.</figcaption>
+  </figure>
+  <p>A region of code that accesses shared state is called a <b>critical section</b>. Any valid mutual exclusion solution must satisfy three properties:</p>
+  <ol class="steps">
+    <li><b>Mutual Exclusion:</b> Only one thread can execute inside the critical section at a time.</li>
+    <li><b>Progress (Liveness):</b> If no thread is in the critical section and some wish to enter, only those competing can participate in deciding who enters next.</li>
+    <li><b>Bounded Waiting:</b> No thread should wait indefinitely to enter (starvation freedom).</li>
+  </ol>
+</section>
+
+<section id="spinlocks" class="chapter">
+  <p class="ch-num">16</p>
+  <h2>Hardware Primitives &amp; Spinlocks</h2>
+  <p>Software algorithms like Peterson's algorithm fail on modern multi-core processors due to out-of-order execution and store buffering. Mutual exclusion requires hardware support for <b>atomic instructions</b>:</p>
+  <div class="code-block">// Compare-And-Swap (CAS) in x86-64 assembly:
+LOCK CMPXCHG %rbx, (lock_address)</div>
+  <dl class="defs">
+    <dt>Test-And-Set (TAS)</dt><dd>Atomically writes 1 to a memory address and returns its previous value.</dd>
+    <dt>Compare-And-Swap (CAS)</dt><dd>Compares memory value with an expected value; if equal, swaps in new value atomically.</dd>
+    <dt>Spinlock</dt><dd>A lock where a thread loops repeatedly ("spins") checking the lock variable until it becomes free. Fast for tiny waits (&lt;50ns), but wastes 100% of a CPU core if the lock holder is descheduled.</dd>
+  </dl>
+</section>
+
+<section id="condvars" class="chapter">
+  <p class="ch-num">17</p>
+  <h2>Condition Variables &amp; Futex</h2>
+  <p>When a thread needs to wait for a condition to become true (e.g. queue not empty), spinning on a variable wastes CPU power. A <b>Condition Variable</b> provides an explicit queue of waiting threads.</p>
+  <figure class="viz" data-viz="producerConsumer">
+    <figcaption>Producer-Consumer Bounded Buffer with Condition Variables. Producers sleep on <code>empty_cv</code> when full; consumers sleep on <code>fill_cv</code> when empty.</figcaption>
+  </figure>
+  <div class="callout note">
+    <p class="callout-label">The Linux Futex (Fast Userspace Mutex)</p>
+    <p>A classical mutex required a syscall to acquire and release. The Linux <b>futex</b> optimizes for the uncontended case: acquiring an uncontended lock is a single atomic CAS in user space without entering the kernel! Only when contention occurs does the thread execute <code>sys_futex()</code> to put the thread to sleep in the kernel scheduler.</p>
+  </div>
+</section>
+
+<section id="semaphores" class="chapter">
+  <p class="ch-num">18</p>
+  <h2>Dijkstra's Semaphores</h2>
+  <p>Invented by Edsger Dijkstra in 1965, a <b>semaphore</b> is an integer variable with two atomic operations: <code>sem_wait()</code> (or <code>P</code> for <i>proberen</i>, "to test") and <code>sem_post()</code> (or <code>V</code> for <i>verhogen</i>, "to increment").</p>
+  <div class="formula">sem_wait(s):  s--; if (s < 0) sleep();
+sem_post(s):  s++; if (s <= 0) wake_one();</div>
+  <ul class="bullets">
+    <li><b>Binary Semaphore:</b> Initialized to 1. Acts identically to a mutual exclusion lock.</li>
+    <li><b>Counting Semaphore:</b> Initialized to N. Used as a resource counter (e.g., managing a pool of N database connections).</li>
+  </ul>
+</section>
+
+<section id="deadlock" class="chapter">
+  <p class="ch-num">19</p>
+  <h2>Deadlock &amp; The Coffman Conditions</h2>
+  <p>A <b>deadlock</b> occurs when a set of threads are permanently blocked because each thread holds a resource that another thread needs, forming a circular dependency.</p>
+  <figure class="viz" data-viz="deadlock">
+    <figcaption>Dining Philosophers Deadlock. Watch circular wait cause total system freeze, and see how enforcing a global resource hierarchy breaks the cycle.</figcaption>
+  </figure>
+  <p>Edward Coffman proved in 1971 that deadlock can occur if and only if all <b>4 Coffman Conditions</b> hold simultaneously:</p>
+  <ol class="steps">
+    <li><b>Mutual Exclusion:</b> Threads claim exclusive control of the resources they require.</li>
+    <li><b>Hold and Wait:</b> Threads holding resources can request additional resources.</li>
+    <li><b>No Preemption:</b> Resources cannot be forcibly confiscated from a thread holding them.</li>
+    <li><b>Circular Wait:</b> There exists a circular chain of threads where each holds a resource requested by the next.</li>
+  </ol>
+</section>
+
+<section id="lockfree" class="chapter">
+  <p class="ch-num">20</p>
+  <h2>Lock-Free &amp; Concurrency Frontiers</h2>
+  <p>Locks suffer from priority inversion, convoying, and thread crashes inside critical sections. Modern high-throughput systems employ <b>lock-free algorithms</b> that guarantee system-wide progress using atomic instructions.</p>
+  <ul class="bullets">
+    <li><b>Lock-Free Queues (Michael-Scott):</b> Uses atomic CAS to append nodes and update tail pointers concurrently.</li>
+    <li><b>The ABA Problem:</b> If memory at address A is freed and re-allocated at address A with different data, a naive CAS check will falsely succeed. Solved using generational tags or <b>hazard pointers</b>.</li>
+    <li><b>RCU (Read-Copy-Update):</b> Used extensively across the Linux kernel. Readers access data lock-free with zero synchronization overhead. Writers make a modified copy, atomically swing the pointer, and defer memory reclamation until all concurrent readers finish their grace period.</li>
+  </ul>
+</section>
+
+<!-- ============================ PART IV ============================ -->
+<div class="part-head" id="part-4">
+  <span>Part IV</span>
+  <h2 class="part-title">Persistence, I/O &amp; Modern Systems</h2>
+  <p>From magnetic platters and flash memory to filesystems, crash consistency, isolation containers, and modern event architectures.</p>
+</div>
+
+<section id="io-dma" class="chapter">
+  <p class="ch-num">21</p>
+  <h2>Hardware I/O &amp; DMA</h2>
+  <p>Early systems communicated with peripherals via <b>Programmed I/O (PIO)</b>, where the CPU executed a loop reading single words from hardware registers. Modern high-speed devices rely on <b>Direct Memory Access (DMA)</b>.</p>
+  <figure class="viz" data-viz="dmaTransfer">
+    <figcaption>DMA Transfer Pipeline. The CPU sets up source and destination addresses, allowing the DMA controller to stream gigabytes across the memory bus while the CPU executes other code.</figcaption>
+  </figure>
+  <div class="callout analogy">
+    <p class="callout-label">Analogy</p>
+    <p>A warehouse manager (CPU) ordering a truck delivery. In programmed I/O, the manager personally carries every box from the truck inside. In DMA, the manager hands the manifest to a forklift crew (DMA controller) and returns to office work until the crew rings a bell (interrupt).</p>
+  </div>
+</section>
+
+<section id="storage" class="chapter">
+  <p class="ch-num">22</p>
+  <h2>Storage Media: Disks, Flash SSDs &amp; NVMe</h2>
+  <p>Storage media exhibit distinct mechanical and semiconductor physics that dictate OS filesystem design:</p>
+  <figure class="viz" data-viz="flashFtl">
+    <figcaption>Flash SSD Out-of-Place Writes &amp; FTL Garbage Collection. Flash cells must be erased in large blocks before they can be rewritten, requiring logical-to-physical block mapping.</figcaption>
+  </figure>
+  <dl class="defs">
+    <dt>Rotational HDDs</dt><dd>Data is stored on magnetic tracks. Access latency is dominated by <b>seek time</b> (moving the mechanical arm) and <b>rotational delay</b> (waiting for the platter to spin). Sequential I/O is 100× faster than random I/O.</dd>
+    <dt>NAND Flash SSDs</dt><dd>Data is organized in 4KB pages and 2–8MB blocks. Reads and writes operate on pages, but erasure can only occur at the block level. The <b>Flash Translation Layer (FTL)</b> writes updates out-of-place and runs wear-leveling algorithms.</dd>
+    <dt>NVMe (Non-Volatile Memory Express)</dt><dd>Replaced legacy SATA protocols (single queue of 32 commands) with up to <b>64,000 parallel queues</b> of 64,000 commands each, communicating over PCIe lanes to match multi-core architectures.</dd>
+  </dl>
+</section>
+
+<section id="inodes" class="chapter">
+  <p class="ch-num">23</p>
+  <h2>File System Architecture: Inodes &amp; Directories</h2>
+  <p>The Unix file system architecture cleanly separates file metadata from file contents. Every file is represented by an <b>inode</b> (index node):</p>
+  <figure class="viz" data-viz="inodeTree">
+    <figcaption>Inode and Directory Resolution. Trace how opening <code>/var/log/syslog</code> navigates from Root Inode 2 through intermediate directory tables down to data block sector pointers.</figcaption>
+  </figure>
+  <div class="formula">Inode = { File Size, Permissions, Owner UID, Timestamps, Direct Pointers[0..11], Indirect Pointers }</div>
+  <p>Directories are simply special files whose data blocks contain a table of entries mapping human-readable names to inode numbers: <code>(name, inode_num)</code>.</p>
+  <ul class="bullets">
+    <li><b>Hard Link:</b> A directory entry pointing directly to an existing inode number. Deleting a file decrements the inode's link count; data blocks are freed only when link count reaches zero.</li>
+    <li><b>Symbolic (Soft) Link:</b> A small file whose data block contains the text string of another path.</li>
+  </ul>
+</section>
+
+<section id="journaling" class="chapter">
+  <p class="ch-num">24</p>
+  <h2>Crash Consistency &amp; Journaling</h2>
+  <p>Appending data to a file requires updating three distinct disk blocks: the data block, the inode (file size), and the data bitmap. If power fails between these writes, the file system enters an inconsistent, corrupted state.</p>
+  <div class="formula">Transaction: [ TxB ➔ Data Block ➔ Inode ➔ Bitmap ➔ TxE (Commit) ] ──> Checkpoint to Inodes</div>
+  <p>Modern filesystems (Ext4, XFS, NTFS) solve this using <b>Write-Ahead Logging (WAL) / Journaling</b>:</p>
+  <ol class="steps">
+    <li>The filesystem writes the intended updates to a contiguous journal area on disk.</li>
+    <li>It issues a cache flush barrier and writes a commit block (TxE).</li>
+    <li>Once committed to the journal, updates are written to their final filesystem locations (Checkpointing).</li>
+    <li>If a crash occurs, reboot recovery simply scans the journal: committed transactions are replayed, and uncommitted transactions are discarded in seconds without needing a full-disk <code>fsck</code> scan!</li>
+  </ol>
+</section>
+
+<section id="iouring" class="chapter">
+  <p class="ch-num">25</p>
+  <h2>epoll, Event Loops &amp; io_uring</h2>
+  <p>The C10K problem (serving 10,000 concurrent clients) exposed the scaling limits of thread-per-connection architectures. Operating systems introduced scalable notification interfaces:</p>
+  <figure class="viz" data-viz="ioUring">
+    <figcaption>io_uring Dual Ring Buffers. User space submits I/O requests to the Submission Queue (SQ) without syscalls; kernel worker threads drain the SQ and post completions to the Completion Queue (CQ).</figcaption>
+  </figure>
+  <dl class="defs">
+    <dt>select / poll</dt><dd>O(N) complexity. The kernel must iterate through every monitored file descriptor on every call, making it slow for thousands of sockets.</dd>
+    <dt>epoll / kqueue</dt><dd>O(1) event-driven notification. The kernel tracks descriptors in a red-black tree and places ready events onto a ready list.</dd>
+    <dt>io_uring (Linux 5.1+)</dt><dd>True asynchronous I/O with zero syscall overhead via lockless memory-mapped ring buffers shared between user space and the kernel.</dd>
+  </dl>
+</section>
+
+<section id="containers" class="chapter">
+  <p class="ch-num">26</p>
+  <h2>Linux Isolation: Namespaces &amp; cgroups</h2>
+  <p>Containers are not virtual machines: they run directly on the host Linux kernel without a hypervisor. A container is simply a normal Linux process wrapped in two kernel features:</p>
+  <dl class="defs">
+    <dt>Namespaces (What you can SEE)</dt><dd>Virtualizes system resources. <b>PID</b> (process sees itself as PID 1), <b>Mount</b> (private root filesystem), <b>Net</b> (private IP and routing table), <b>IPC</b>, <b>UTS</b> (hostname), and <b>User</b> (maps container root to unprivileged host UID).</dd>
+    <dt>Control Groups - cgroups v2 (What you can USE)</dt><dd>Enforces strict resource limits. Governs CPU bandwidth quota (e.g. 50% CPU), memory caps (kill on exceeding limit), I/O weight, and network priority.</dd>
+  </dl>
+  <div class="callout analogy">
+    <p class="callout-label">Analogy</p>
+    <p>Virtual machines are like detached suburban houses: each has its own foundation, plumbing, and roof (its own guest kernel). Containers are like apartments in an apartment building: they share the same building foundation and plumbing (the host kernel), but have private keyed doors and separate utility meters.</p>
+  </div>
+</section>
+
+<section id="ebpf" class="chapter">
+  <p class="ch-num">27</p>
+  <h2>In-Kernel Bytecode: eBPF</h2>
+  <p>Historically, extending the Linux kernel required writing kernel modules (risking kernel panics) or waiting years for new kernel releases. <b>eBPF (Extended Berkeley Packet Filter)</b> revolutionizes systems engineering by allowing developers to run sandboxed, high-performance bytecode directly inside the kernel at runtime.</p>
+  <ul class="bullets">
+    <li><b>Kernel In-Flight Verifier:</b> Statically verifies every program before execution: proves it cannot access invalid pointers, has no unbounded loops, and cannot freeze the kernel.</li>
+    <li><b>JIT Compilation:</b> Compiles verified bytecode into native machine instructions with zero overhead.</li>
+    <li><b>Use Cases:</b> High-speed DDoS defense at the NIC driver (XDP), deep production observability without code changes (kprobes, tracepoints), and container networking (Cilium).</li>
+  </ul>
+</section>
+
+<section id="landscape" class="chapter">
+  <p class="ch-num">28</p>
+  <h2>The 2026 Systems Architecture Landscape</h2>
+  <p>A compressed comparative synthesis of how modern production systems balance security, performance, and hardware evolution.</p>
+  <div class="table-wrap">
+    <table class="compare">
+      <thead>
+        <tr>
+          <th>Architecture</th>
+          <th>Kernel Structure</th>
+          <th>Memory &amp; Privilege Model</th>
+          <th>Primary Advantages &amp; Trade-offs</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>Linux</th>
+          <td>Monolithic with dynamic modules</td>
+          <td>Ring 0/3, multi-level paging, cgroups v2</td>
+          <td>Highest throughput and driver support; large attack surface in kernel mode.</td>
+        </tr>
+        <tr>
+          <th>macOS XNU</th>
+          <td>Hybrid (Mach microkernel + BSD)</td>
+          <td>Mach IPC, POSIX layer, I/O Kit drivers</td>
+          <td>Clean driver object model; slight IPC message-passing overhead.</td>
+        </tr>
+        <tr>
+          <th>seL4</th>
+          <td>Formally verified Microkernel</td>
+          <td>Capability-based security, isolated user servers</td>
+          <td>Mathematically proven bug-free; context switch IPC costs between user servers.</td>
+        </tr>
+        <tr>
+          <th>Rust in Linux</th>
+          <td>Safe systems programming</td>
+          <td>Compile-time borrow checker, zero-cost abstractions</td>
+          <td>Eliminates 70% of historical kernel CVEs (use-after-free, double-free, null pointers).</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="glossary" class="chapter">
+  <p class="ch-num">29</p>
+  <h2>Glossary &amp; Systems Numbers</h2>
+  <figure class="viz" data-viz="latencyPyramid">
+    <figcaption>Hardware latency hierarchy from CPU cycles to rotating magnetic media, normalized to human intuitive time.</figcaption>
+  </figure>
+  <h3>Numbers Every Systems Engineer Must Know</h3>
+  <ul class="bullets numbers">
+    <li><b>L1 cache reference:</b> ~1.0 nanosecond.</li>
+    <li><b>Branch mispredict:</b> ~3 nanoseconds (flushes 15-stage CPU pipeline).</li>
+    <li><b>L2 cache reference:</b> ~4 nanoseconds.</li>
+    <li><b>Mutex lock / unlock (uncontended):</b> ~15 nanoseconds (single atomic CAS).</li>
+    <li><b>Main DRAM reference:</b> ~60–100 nanoseconds.</li>
+    <li><b>Hardware Context Switch / Syscall:</b> ~1,000–1,500 nanoseconds (~1.5 µs).</li>
+    <li><b>NVMe SSD Random 4KB Read:</b> ~10–20 microseconds (10,000 ns).</li>
+    <li><b>Rotational Hard Drive Seek:</b> ~10,000,000 nanoseconds (10 milliseconds).</li>
+  </ul>
+  <h3>Systems Glossary</h3>
+  <dl class="glossary">
+    <dt>PCB (Process Control Block)</dt><dd>The kernel data structure storing all state (registers, memory map, file descriptors, priority) for a process.</dd>
+    <dt>PTE (Page Table Entry)</dt><dd>A hardware descriptor mapping a virtual page number to a physical frame, with permission and status flags.</dd>
+    <dt>TLB (Translation Lookaside Buffer)</dt><dd>High-speed CPU MMU associative cache of recent virtual-to-physical address translations.</dd>
+    <dt>Futex</dt><dd>Fast Userspace Mutex: a Linux synchronization primitive that handles uncontended locking in user space without syscalls.</dd>
+    <dt>Inode</dt><dd>The filesystem data structure recording file metadata and block pointers, independent of directory names.</dd>
+    <dt>Copy-on-Write (COW)</dt><dd>An optimization that delays duplicating memory until one of the sharing processes modifies it.</dd>
+    <dt>eBPF</dt><dd>Extended Berkeley Packet Filter: sandboxed virtual machine running verified bytecode directly inside the kernel.</dd>
+    <dt>io_uring</dt><dd>High-performance asynchronous I/O interface using lockless submission and completion ring buffers.</dd>
+    <dt>cgroups</dt><dd>Linux control groups for metering and limiting CPU, memory, and I/O bandwidth for containers.</dd>
+  </dl>
+  <h3>Canonical Further Reading</h3>
+  <ul class="reading">
+    <li><a href="https://pages.cs.wisc.edu/~remzi/OSTEP/" target="_blank" rel="noopener">Operating Systems: Three Easy Pieces (OSTEP)</a> · Remzi &amp; Andrea Arpaci-Dusseau</li>
+    <li><a href="https://pdos.csail.mit.edu/6.828/2021/xv6.html" target="_blank" rel="noopener">xv6: A Simple, Unix-like Teaching Operating System</a> · MIT PDOS 6.S081</li>
+    <li><a href="https://cs162.org/" target="_blank" rel="noopener">CS 162: Operating Systems and Systems Programming</a> · UC Berkeley</li>
+    <li><a href="https://kernelnewbies.org/" target="_blank" rel="noopener">Linux Kernel Development (3rd Edition)</a> · Robert Love</li>
+    <li><a href="https://kernel.dk/io_uring.pdf" target="_blank" rel="noopener">Efficient IO with io_uring</a> · Jens Axboe (2019)</li>
+    <li><a href="https://ebpf.io/" target="_blank" rel="noopener">eBPF Documentation &amp; Architecture Reference</a> · Linux Foundation</li>
+  </ul>
+</section>
+
+<footer class="site-foot">
+  <p><b>Operating Systems, Cycle by Cycle</b> · An interactive visual field guide to OS fundamentals. Plain JavaScript in <code>assets/</code>; zero build step required.</p>
+</footer>
+
+  </main>
+</div>
+
+<script src="assets/core.js"></script>
+<script src="assets/viz-cpu.js"></script>
+<script src="assets/viz-memory.js"></script>
+<script src="assets/viz-concurrency.js"></script>
+<script src="assets/viz-systems.js"></script>
+<script>
+  window.addEventListener('DOMContentLoaded', () => {
+    OS.boot();
+  });
+</script>
+</body>
+</html>
