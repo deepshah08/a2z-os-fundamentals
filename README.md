@@ -13,8 +13,8 @@ Synthesized from the foundational canon of operating systems education:
 
 ## 🚀 Live Deployments
 
-- **Live Preview URL**: [https://temporary-zippy-zither-nv98337.vercel.app](https://temporary-zippy-zither-nv98337.vercel.app)
-- **Claim Link (to bind to your Vercel account permanently)**: [Claim Deployment](https://vercel.com/claim-deployment?code=598ad05b-83a9-46a7-8461-152db03299c6)
+- **Live Preview URL**: [https://temporary-agile-crater-qeimev1.vercel.app](https://temporary-agile-crater-qeimev1.vercel.app)
+- **Claim Link (to bind to your Vercel account permanently)**: [Claim Deployment](https://vercel.com/claim-deployment?code=83dd58ab-f9c3-4ff5-90c2-51909e9d8664)
 
 ---
 
