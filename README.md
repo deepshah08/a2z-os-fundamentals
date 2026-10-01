@@ -13,8 +13,9 @@ Synthesized from the foundational canon of operating systems education:
 
 ## 🚀 Live Deployments
 
-- **Live Preview URL**: [https://temporary-agile-crater-qeimev1.vercel.app](https://temporary-agile-crater-qeimev1.vercel.app)
-- **Claim Link (to bind to your Vercel account permanently)**: [Claim Deployment](https://vercel.com/claim-deployment?code=83dd58ab-f9c3-4ff5-90c2-51909e9d8664)
+- **Permanent Live URL (GitHub Pages)**: **[https://deepshah08.github.io/a2z-os-fundamentals/](https://deepshah08.github.io/a2z-os-fundamentals/)** (Permanent · Never expires)
+- **GitHub Repository**: [https://github.com/deepshah08/a2z-os-fundamentals](https://github.com/deepshah08/a2z-os-fundamentals)
+- **Vercel Claim Link** *(optional, to also link to Vercel account)*: [Claim Deployment](https://vercel.com/claim-deployment?code=83dd58ab-f9c3-4ff5-90c2-51909e9d8664)
 
 ---
 
