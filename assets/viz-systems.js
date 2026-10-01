@@ -40,11 +40,11 @@
         ctx.roundRect(25, y, boxW, 70, 6);
         ctx.fill(); ctx.stroke();
         ctx.fillStyle = OS.C.ink;
-        ctx.font = OS.font(11, 'mono', 600);
-        ctx.fillText('CPU', 35, y + 25);
-        ctx.font = OS.font(10, 'sans', 400);
+        ctx.font = OS.font(boxW < 80 ? 9 : 11, 'mono', 600);
+        ctx.fillText('CPU', 32, y + 25);
+        ctx.font = OS.font(boxW < 80 ? 8 : 10, 'sans', 400);
         ctx.fillStyle = OS.C.muted;
-        ctx.fillText(stepIndex === 2 ? 'Running Apps' : 'Initiates I/O', 35, y + 45);
+        ctx.fillText(stepIndex === 2 ? 'Running' : 'Init I/O', 32, y + 45);
 
         // 2. DMA Controller Box
         const dmaX = 25 + boxW + 15;
@@ -53,11 +53,11 @@
         ctx.roundRect(dmaX, y, boxW, 70, 6);
         ctx.fill(); ctx.stroke();
         ctx.fillStyle = OS.C.ink;
-        ctx.font = OS.font(11, 'mono', 600);
-        ctx.fillText('DMA CONTROLLER', dmaX + 10, y + 25);
-        ctx.font = OS.font(10, 'sans', 400);
+        ctx.font = OS.font(boxW < 80 ? 8 : 10, 'mono', 600);
+        ctx.fillText(boxW < 85 ? 'DMA' : 'DMA CTRL', dmaX + 6, y + 25);
+        ctx.font = OS.font(boxW < 80 ? 8 : 10, 'sans', 400);
         ctx.fillStyle = OS.C.muted;
-        ctx.fillText('Bus Master', dmaX + 10, y + 45);
+        ctx.fillText('Master', dmaX + 6, y + 45);
 
         // 3. RAM Box
         const ramX = dmaX + boxW + 15;
@@ -66,11 +66,11 @@
         ctx.roundRect(ramX, y, boxW, 70, 6);
         ctx.fill(); ctx.stroke();
         ctx.fillStyle = OS.C.ink;
-        ctx.font = OS.font(11, 'mono', 600);
-        ctx.fillText('RAM (0x8000)', ramX + 10, y + 25);
-        ctx.font = OS.font(10, 'sans', 400);
+        ctx.font = OS.font(boxW < 80 ? 9 : 10, 'mono', 600);
+        ctx.fillText(boxW < 85 ? 'RAM' : 'RAM (0x8000)', ramX + 6, y + 25);
+        ctx.font = OS.font(boxW < 80 ? 8 : 10, 'sans', 400);
         ctx.fillStyle = OS.C.muted;
-        ctx.fillText('Direct Stream', ramX + 10, y + 45);
+        ctx.fillText('Stream', ramX + 6, y + 45);
 
         // 4. Disk Device Box
         const diskX = ramX + boxW + 15;
@@ -79,11 +79,11 @@
         ctx.roundRect(diskX, y, boxW, 70, 6);
         ctx.fill(); ctx.stroke();
         ctx.fillStyle = OS.C.ink;
-        ctx.font = OS.font(11, 'mono', 600);
-        ctx.fillText('DISK CONTROLLER', diskX + 10, y + 25);
-        ctx.font = OS.font(10, 'sans', 400);
+        ctx.font = OS.font(boxW < 80 ? 8 : 10, 'mono', 600);
+        ctx.fillText(boxW < 85 ? 'DISK' : 'DISK CTRL', diskX + 6, y + 25);
+        ctx.font = OS.font(boxW < 80 ? 8 : 10, 'sans', 400);
         ctx.fillStyle = OS.C.muted;
-        ctx.fillText('NVMe / SATA', diskX + 10, y + 45);
+        ctx.fillText('NVMe', diskX + 6, y + 45);
 
         // Progress Arrow
         ctx.fillStyle = OS.C.accent;
@@ -562,16 +562,24 @@
           ctx.fill(); ctx.stroke();
 
           ctx.fillStyle = OS.C.ink;
-          ctx.font = OS.font(11, 'mono', 600);
+          ctx.font = OS.font(w < 520 ? 10 : 11, 'mono', 600);
           ctx.fillText(t.name, 35, y + 17);
 
-          ctx.fillStyle = t.color;
-          ctx.font = OS.font(11, 'mono', 600);
-          ctx.fillText(`Real: ${t.real}`, w / 2 - 40, y + 17);
+          if (w < 520) {
+            ctx.fillStyle = t.color;
+            ctx.font = OS.font(10, 'mono', 600);
+            ctx.textAlign = 'right';
+            ctx.fillText(t.real, w - 35, y + 17);
+            ctx.textAlign = 'left';
+          } else {
+            ctx.fillStyle = t.color;
+            ctx.font = OS.font(11, 'mono', 600);
+            ctx.fillText(`Real: ${t.real}`, w * 0.44, y + 17);
 
-          ctx.fillStyle = OS.C.muted;
-          ctx.font = OS.font(10, 'sans', 500);
-          ctx.fillText(`Human Scale: ${t.human}`, w - 170, y + 17);
+            ctx.fillStyle = OS.C.muted;
+            ctx.font = OS.font(10, 'sans', 500);
+            ctx.fillText(`Human: ${t.human}`, w - 170, y + 17);
+          }
         });
       }
     });

@@ -162,7 +162,7 @@ Response Time = T_first_run − T_arrival</div>
   <h2>Advanced Scheduling: MLFQ &amp; CFS</h2>
   <p>Real-world workloads contain a mix of interactive tasks (keystrokes, mouse moves, web servers) and long-running batch compute (video encoders, ML training). Schedulers cannot know job lengths in advance, so they must learn from history.</p>
   <figure class="viz" data-viz="mlfq">
-    <figcaption>Multi-Level Feedback Queue (MLFQ). Interactive jobs that yield CPU early stay at high priority; CPU-bound jobs exhaust their quantum and get demoted. Priority Boost periodically resets all jobs to prevent starvation.</figcaption>
+    <figcaption>Dual-Engine Scheduler Simulator: Switch between Multi-Level Feedback Queue (MLFQ with 5 core rules and priority boost) and Linux Completely Fair Scheduler (CFS with vruntime weighting and red-black tree ordering).</figcaption>
   </figure>
   <h3>The Linux Completely Fair Scheduler (CFS)</h3>
   <p>Linux replaced classical queue scheduling with the <b>Completely Fair Scheduler (CFS)</b>. CFS tracks the virtual runtime (<code>vruntime</code>) of every task. Tasks are organized in a self-balancing red-black tree keyed by <code>vruntime</code>. The scheduler always picks the leftmost task (the one that has received the least CPU time).</p>

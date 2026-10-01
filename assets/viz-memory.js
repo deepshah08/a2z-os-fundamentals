@@ -377,14 +377,15 @@
         // Stream of references at top
         ctx.font = OS.font(11, 'mono', 500);
         let rx = 25;
+        const spacing = Math.min(22, Math.max(13, (w - 50) / refString.length));
         refString.forEach((p, i) => {
           ctx.fillStyle = i === stepIndex - 1 ? OS.C.accent : (i < stepIndex ? OS.C.muted : OS.C.faint);
           if (i === stepIndex - 1) {
-            ctx.fillRect(rx - 2, 15, 16, 20);
+            ctx.fillRect(rx - 2, 15, spacing - 4, 20);
             ctx.fillStyle = '#ffffff';
           }
           ctx.fillText(p, rx, 30);
-          rx += 22;
+          rx += spacing;
         });
 
         // Frame comparison boxes
