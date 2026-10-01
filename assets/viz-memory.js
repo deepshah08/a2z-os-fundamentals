@@ -28,7 +28,7 @@
         { label: '0x3FFF (VPN: 3, Offset: 0xFFF)', value: 0x3FFF }
       ],
       value: vAddr,
-      onChange: (v) => { vAddr = parseInt(v); render(); }
+      onChange: (v) => { vAddr = isNaN(parseInt(v)) ? 0x1A4C : parseInt(v); render(); }
     });
 
     const cv = OS.canvas(host, {

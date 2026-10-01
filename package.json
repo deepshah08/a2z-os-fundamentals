@@ -1,0 +1,24 @@
+{
+  "name": "a2z-os-fundamentals",
+  "version": "1.0.0",
+  "description": "Operating Systems, Cycle by Cycle — An interactive visual field guide to OS fundamentals",
+  "main": "assets/core.js",
+  "scripts": {
+    "test": "node tests/audit-all-widgets.js",
+    "scaffold": "node pipeline/scaffold.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepshah08/a2z-os-fundamentals.git"
+  },
+  "keywords": [
+    "operating-systems",
+    "interactive-explorable",
+    "cs-education",
+    "canvas",
+    "ostep",
+    "linux-kernel"
+  ],
+  "author": "Deep Shah",
+  "license": "MIT"
+}

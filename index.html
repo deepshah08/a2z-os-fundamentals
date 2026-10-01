@@ -450,7 +450,7 @@ sem_post(s):  s++; if (s <= 0) wake_one();</div>
   <h2>Storage Media: Disks, Flash SSDs &amp; NVMe</h2>
   <p>Storage media exhibit distinct mechanical and semiconductor physics that dictate OS filesystem design:</p>
   <figure class="viz" data-viz="flashFtl">
-    <figcaption>Flash SSD Out-of-Place Writes &amp; FTL Garbage Collection. Flash cells must be erased in large blocks before they can be rewritten, requiring logical-to-physical block mapping.</figcaption>
+    <figcaption>Tri-Mode Storage Media Studio: Switch between NAND Flash SSD &amp; FTL (out-of-place writes, L2P table, TRIM garbage collection, WAF), Rotational HDD Physics (platter rotation, seek time, head actuator latency breakdown), and Modern NVMe Multi-Queue vs legacy SATA/AHCI lock contention.</figcaption>
   </figure>
   <dl class="defs">
     <dt>Rotational HDDs</dt><dd>Data is stored on magnetic tracks. Access latency is dominated by <b>seek time</b> (moving the mechanical arm) and <b>rotational delay</b> (waiting for the platter to spin). Sequential I/O is 100× faster than random I/O.</dd>

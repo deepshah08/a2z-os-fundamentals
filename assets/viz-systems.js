@@ -107,63 +107,411 @@
   });
 
   /* --------------------------------------------------------------------------
-   * 2. Flash SSD Block Erasure & FTL Simulator
+   * 2. Storage Media: Disks, Flash SSDs & NVMe Tri-Mode Studio
    * -------------------------------------------------------------------------- */
   OS.register('flashFtl', function (host) {
+    let mode = 'flash'; // 'flash', 'hdd', 'nvme'
+
+    // --- Mode 1: Flash SSD & FTL State ---
+    const TOTAL_PAGES = 8;
+    let lbaMap = { 0: 0, 1: 1, 2: 2, 3: 3 }; // Logical Block Address -> Physical Page Number
     let pages = [
-      { id: 0, status: 'VALID', data: 'A' },
-      { id: 1, status: 'VALID', data: 'B' },
-      { id: 2, status: 'VALID', data: 'C' },
-      { id: 3, status: 'INVALID', data: 'Old A' },
-      { id: 4, status: 'EMPTY', data: '—' },
-      { id: 5, status: 'EMPTY', data: '—' }
+      { id: 0, lba: 0, status: 'VALID', data: 'cfg.v1' },
+      { id: 1, lba: 1, status: 'VALID', data: 'db.v1' },
+      { id: 2, lba: 2, status: 'VALID', data: 'app.v1' },
+      { id: 3, lba: 3, status: 'VALID', data: 'log.v1' },
+      { id: 4, lba: null, status: 'EMPTY', data: '—' },
+      { id: 5, lba: null, status: 'EMPTY', data: '—' },
+      { id: 6, lba: null, status: 'EMPTY', data: '—' },
+      { id: 7, lba: null, status: 'EMPTY', data: '—' }
     ];
+    let hostWrites = 4;
+    let flashWrites = 4;
+    let flashAction = 'FTL operational. Write to LBAs or trigger Garbage Collection (GC/TRIM).';
+    let writeVer = 2;
+
+    // --- Mode 2: Rotational HDD Physics State ---
+    let hddHeadTrack = 0; // 0 (Outer), 1 (Middle), 2 (Inner)
+    let hddHeadSector = 0; // 0..7
+    let hddTargetTrack = 2;
+    let hddTargetSector = 5;
+    let hddSeekTime = 8.0; // ms
+    let hddRotLatency = 4.16; // ms
+    let hddTransferTime = 0.05; // ms
+    let hddAction = 'Actuator arm resting on Track 0, Sector 0. Choose Random Seek or Sequential Read.';
+    let hddType = 'RANDOM';
+
+    // --- Mode 3: NVMe vs SATA State ---
+    let nvmeBurstDone = false;
+    let sataTime = 112; // microseconds
+    let nvmeTime = 9;   // microseconds
 
     const controls = OS.controls(host);
-    OS.button(controls, 'Write Update (Page 0 → New A)', () => {
-      // Flash cannot overwrite in place! Old page becomes INVALID, new page written to EMPTY slot
-      pages[0].status = 'INVALID';
-      pages[4].status = 'VALID';
-      pages[4].data = 'New A';
-      render();
-    }, { primary: true });
+    const subControls = OS.el('div', { class: 'controls' });
+    host.appendChild(subControls);
 
-    OS.button(controls, 'Trigger Garbage Collection (Trim)', () => {
-      // GC copies valid pages (1, 2, 4) to new block and erases old block
-      pages = [
-        { id: 0, status: 'VALID', data: 'B' },
-        { id: 1, status: 'VALID', data: 'C' },
-        { id: 2, status: 'VALID', data: 'New A' },
-        { id: 3, status: 'EMPTY', data: '—' },
-        { id: 4, status: 'EMPTY', data: '—' },
-        { id: 5, status: 'EMPTY', data: '—' }
-      ];
-      render();
+    OS.segmented(controls, {
+      label: 'Storage Technology',
+      options: [
+        { label: 'NAND Flash SSD & FTL', value: 'flash' },
+        { label: 'Rotational HDD Physics', value: 'hdd' },
+        { label: 'NVMe Multi-Queue vs SATA', value: 'nvme' }
+      ],
+      value: mode,
+      onChange: (v) => {
+        mode = v;
+        updateButtons();
+        render();
+      }
     });
 
+    function updateButtons() {
+      subControls.innerHTML = '';
+      if (mode === 'flash') {
+        OS.button(subControls, 'Write Update to LBA 0 (config)', () => {
+          doFlashWrite(0, `cfg.v${writeVer++}`);
+        }, { primary: true });
+
+        OS.button(subControls, 'Write Update to LBA 1 (user.db)', () => {
+          doFlashWrite(1, `db.v${writeVer++}`);
+        });
+
+        OS.button(subControls, 'Trigger Garbage Collection (TRIM)', () => {
+          doGarbageCollection();
+        });
+
+        OS.button(subControls, 'Reset Flash Block', () => {
+          resetFlash();
+        });
+      } else if (mode === 'hdd') {
+        OS.button(subControls, 'Random Read (Seek Track + Rotate)', () => {
+          hddType = 'RANDOM';
+          // Pick new random target
+          hddHeadTrack = hddTargetTrack;
+          hddHeadSector = hddTargetSector;
+          hddTargetTrack = Math.floor(Math.random() * 3);
+          hddTargetSector = Math.floor(Math.random() * 8);
+
+          const trackDelta = Math.abs(hddTargetTrack - hddHeadTrack);
+          hddSeekTime = trackDelta > 0 ? (trackDelta * 3.5 + 2.0) : 0.0;
+          const sectorDelta = (hddTargetSector - hddHeadSector + 8) % 8;
+          hddRotLatency = (sectorDelta / 8) * 8.33; // 7200 RPM = 8.33ms per rev
+          hddTransferTime = 0.05;
+
+          const total = hddSeekTime + hddRotLatency + hddTransferTime;
+          hddAction = `Random Seek to Track ${hddTargetTrack}, Sector ${hddTargetSector}: Seek ${hddSeekTime.toFixed(1)}ms + Rot ${hddRotLatency.toFixed(1)}ms + Xfer 0.05ms = ${total.toFixed(2)}ms (~${Math.round(1000 / total)} IOPS)`;
+          render();
+        }, { primary: true });
+
+        OS.button(subControls, 'Sequential Read (Next Sector)', () => {
+          hddType = 'SEQUENTIAL';
+          hddHeadTrack = hddTargetTrack;
+          hddHeadSector = (hddTargetSector + 1) % 8;
+          hddTargetSector = hddHeadSector;
+          hddSeekTime = 0.0;
+          hddRotLatency = 0.0;
+          hddTransferTime = 0.05;
+          hddAction = `Sequential Streaming: Zero head movement, zero rotational delay! Read in 0.05ms (~20,000 IOPS / 210 MB/s)`;
+          render();
+        });
+
+        OS.button(subControls, 'Reset Arm Position', () => {
+          hddHeadTrack = 0; hddHeadSector = 0;
+          hddTargetTrack = 2; hddTargetSector = 5;
+          hddSeekTime = 8.0; hddRotLatency = 4.16;
+          hddAction = 'Actuator arm reset to Track 0, Sector 0.';
+          render();
+        });
+      } else if (mode === 'nvme') {
+        OS.button(subControls, 'Simulate 8-Core Parallel I/O Burst', () => {
+          nvmeBurstDone = true;
+          render();
+        }, { primary: true });
+
+        OS.button(subControls, 'Reset Benchmark', () => {
+          nvmeBurstDone = false;
+          render();
+        });
+      }
+    }
+
+    function doFlashWrite(lba, data) {
+      const freeIdx = pages.findIndex(p => p.status === 'EMPTY');
+      if (freeIdx === -1) {
+        flashAction = 'BLOCK FULL: No empty pages left! Must run Garbage Collection (Block Erase) before writing.';
+        render();
+        return;
+      }
+
+      hostWrites++;
+      flashWrites++;
+
+      // Mark old physical page as INVALID
+      const oldPpn = lbaMap[lba];
+      if (oldPpn !== undefined && pages[oldPpn]) {
+        pages[oldPpn].status = 'INVALID';
+      }
+
+      // Allocate new free physical page (Out-of-place write)
+      pages[freeIdx].status = 'VALID';
+      pages[freeIdx].lba = lba;
+      pages[freeIdx].data = data;
+      lbaMap[lba] = freeIdx;
+
+      flashAction = `Host wrote LBA ${lba} -> FTL appended to clean Page ${freeIdx}. Old Page ${oldPpn} marked INVALID (Stale).`;
+      render();
+    }
+
+    function doGarbageCollection() {
+      // Find all VALID pages
+      const validPages = pages.filter(p => p.status === 'VALID');
+      const copiedCount = validPages.length;
+
+      // GC copies valid pages into a fresh block and erases the old block
+      flashWrites += copiedCount; // Relocation writes increase flash wear!
+
+      const newPages = [];
+      const newMap = {};
+
+      validPages.forEach((p, idx) => {
+        newPages.push({ id: idx, lba: p.lba, status: 'VALID', data: p.data });
+        newMap[p.lba] = idx;
+      });
+
+      for (let i = validPages.length; i < TOTAL_PAGES; i++) {
+        newPages.push({ id: i, lba: null, status: 'EMPTY', data: '—' });
+      }
+
+      pages = newPages;
+      lbaMap = newMap;
+      flashAction = `Garbage Collection (TRIM) Complete: Relocated ${copiedCount} valid pages to new block. High-voltage erased stale block, recovering ${TOTAL_PAGES - copiedCount} clean pages!`;
+      render();
+    }
+
+    function resetFlash() {
+      writeVer = 2;
+      hostWrites = 4;
+      flashWrites = 4;
+      lbaMap = { 0: 0, 1: 1, 2: 2, 3: 3 };
+      pages = [
+        { id: 0, lba: 0, status: 'VALID', data: 'cfg.v1' },
+        { id: 1, lba: 1, status: 'VALID', data: 'db.v1' },
+        { id: 2, lba: 2, status: 'VALID', data: 'app.v1' },
+        { id: 3, lba: 3, status: 'VALID', data: 'log.v1' },
+        { id: 4, lba: null, status: 'EMPTY', data: '—' },
+        { id: 5, lba: null, status: 'EMPTY', data: '—' },
+        { id: 6, lba: null, status: 'EMPTY', data: '—' },
+        { id: 7, lba: null, status: 'EMPTY', data: '—' }
+      ];
+      flashAction = 'Flash block reset to clean state.';
+      render();
+    }
+
+    updateButtons();
+
     const cv = OS.canvas(host, {
-      height: 150,
-      label: 'Flash memory block and pages',
+      height: 230,
+      label: 'Storage media and device architecture simulator',
       draw: (ctx, w, h) => {
-        const slotW = 65;
-        pages.forEach((p, i) => {
-          const sx = 25 + i * (slotW + 10);
-          ctx.fillStyle = p.status === 'VALID' ? OS.rgba(OS.C.teal, 0.15) : (p.status === 'INVALID' ? OS.rgba(OS.C.rose, 0.15) : OS.C.sunk);
-          ctx.strokeStyle = p.status === 'VALID' ? OS.C.teal : (p.status === 'INVALID' ? OS.C.rose : OS.C.line);
-          ctx.lineWidth = 1.5;
-          ctx.roundRect(sx, 30, slotW, 65, 6);
+        if (mode === 'flash') {
+          // --- Draw Flash SSD Block & FTL Mapping ---
+          // Top: L2P Translation Table
+          ctx.fillStyle = OS.C.sunk;
+          ctx.strokeStyle = OS.C.line;
+          ctx.roundRect(20, 15, w - 40, 52, 6);
+          ctx.fill(); ctx.stroke();
+
+          ctx.fillStyle = OS.C.accent;
+          ctx.font = OS.font(11, 'mono', 600);
+          ctx.fillText('FTL LOGICAL-TO-PHYSICAL (L2P) INDIRECTION TABLE', 30, 32);
+
+          let mx = 30;
+          ctx.font = OS.font(10, 'mono', 500);
+          [0, 1, 2, 3].forEach(lba => {
+            const ppn = lbaMap[lba];
+            ctx.fillStyle = OS.C.ink;
+            const str = `LBA ${lba} → PPN ${ppn !== undefined ? ppn : '—'}`;
+            ctx.fillText(str, mx, 52);
+            mx += Math.max(90, (w - 70) / 4);
+          });
+
+          // Bottom: Physical Flash Block (8 Pages)
+          const blockY = 80;
+          ctx.fillStyle = OS.C.sunk;
+          ctx.strokeStyle = OS.C.line;
+          ctx.roundRect(20, blockY, w - 40, 130, 8);
           ctx.fill(); ctx.stroke();
 
           ctx.fillStyle = OS.C.ink;
-          ctx.font = OS.font(10, 'mono', 600);
-          ctx.fillText(`Page ${p.id}`, sx + 8, 48);
-          ctx.font = OS.font(12, 'mono', 500);
-          ctx.fillText(p.data, sx + 8, 68);
+          ctx.font = OS.font(11, 'mono', 600);
+          ctx.fillText('NAND FLASH PHYSICAL BLOCK (Erase Unit: Must be erased in whole block before rewrite)', 30, blockY + 20);
 
-          ctx.fillStyle = p.status === 'VALID' ? OS.C.teal : (p.status === 'INVALID' ? OS.C.rose : OS.C.faint);
-          ctx.font = OS.font(9, 'mono', 600);
-          ctx.fillText(p.status, sx + 8, 86);
-        });
+          const slotW = Math.max(28, (w - 70) / TOTAL_PAGES);
+          pages.forEach((p, i) => {
+            const sx = 28 + i * (slotW);
+            const isVal = p.status === 'VALID';
+            const isInv = p.status === 'INVALID';
+
+            ctx.fillStyle = isVal ? OS.rgba(OS.C.teal, 0.15) : (isInv ? OS.rgba(OS.C.rose, 0.15) : OS.rgba(OS.C.surface, 0.6));
+            ctx.strokeStyle = isVal ? OS.C.teal : (isInv ? OS.C.rose : OS.C.line);
+            ctx.lineWidth = isVal ? 1.5 : 1;
+            ctx.roundRect(sx, blockY + 32, slotW - 6, 78, 6);
+            ctx.fill(); ctx.stroke();
+
+            ctx.fillStyle = OS.C.ink;
+            ctx.font = OS.font(slotW < 45 ? 8 : 10, 'mono', 600);
+            ctx.fillText(`P${p.id}`, sx + 4, blockY + 48);
+
+            ctx.font = OS.font(slotW < 45 ? 8 : 10, 'mono', 500);
+            ctx.fillStyle = isVal ? OS.C.ink : OS.C.muted;
+            const displayData = slotW < 45 ? p.data.slice(0, 3) : p.data;
+            ctx.fillText(displayData, sx + 4, blockY + 68);
+
+            ctx.fillStyle = isVal ? OS.C.teal : (isInv ? OS.C.rose : OS.C.faint);
+            ctx.font = OS.font(slotW < 45 ? 7 : 8, 'mono', 600);
+            const statusLabel = slotW < 45 ? p.status.slice(0, 3) : p.status;
+            ctx.fillText(statusLabel, sx + 4, blockY + 95);
+          });
+        } else if (mode === 'hdd') {
+          // --- Draw Rotational Mechanical Hard Drive Physics ---
+          const cx = Math.min(130, w * 0.25);
+          const cy = 115;
+
+          // Platter base circle
+          ctx.fillStyle = OS.C.sunk;
+          ctx.strokeStyle = OS.C.line;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 85, 0, Math.PI * 2);
+          ctx.fill(); ctx.stroke();
+
+          // Concentric Tracks
+          const trackRadii = [75, 55, 35];
+          const trackColors = [OS.C.accent, OS.C.teal, OS.C.amber];
+          trackRadii.forEach((r, idx) => {
+            ctx.strokeStyle = (idx === hddTargetTrack) ? trackColors[idx] : OS.rgba(OS.C.line, 0.8);
+            ctx.lineWidth = (idx === hddTargetTrack) ? 2.5 : 1;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
+          });
+
+          // Mechanical Head / Actuator Arm
+          const activeRadius = trackRadii[hddTargetTrack];
+          const angle = (hddTargetSector * Math.PI) / 4;
+          const headX = cx + Math.cos(angle) * activeRadius;
+          const headY = cy + Math.sin(angle) * activeRadius;
+
+          // Actuator Arm Pivot
+          ctx.fillStyle = OS.C.faint;
+          ctx.beginPath();
+          ctx.arc(cx - 95, cy + 60, 8, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Arm Line to Head
+          ctx.strokeStyle = OS.C.rose;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(cx - 95, cy + 60);
+          ctx.lineTo(headX, headY);
+          ctx.stroke();
+
+          // Read/Write Head tip
+          ctx.fillStyle = OS.C.rose;
+          ctx.beginPath();
+          ctx.arc(headX, headY, 5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Spindle Motor Center
+          ctx.fillStyle = OS.C.ink;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Right Side: Latency Breakdown HUD
+          const hudX = Math.max(cx + 105, w * 0.48);
+          ctx.fillStyle = OS.C.sunk;
+          ctx.strokeStyle = OS.C.line;
+          ctx.roundRect(hudX, 18, w - hudX - 20, 195, 8);
+          ctx.fill(); ctx.stroke();
+
+          ctx.fillStyle = OS.C.accent;
+          ctx.font = OS.font(11, 'mono', 600);
+          ctx.fillText(`HDD ACCESS LATENCY PROFILE (${hddType})`, hudX + 14, 38);
+
+          ctx.font = OS.font(10, 'mono', 400);
+          ctx.fillStyle = OS.C.ink;
+          ctx.fillText(`• Seek Time (Arm travel): ${hddSeekTime.toFixed(1)} ms`, hudX + 14, 62);
+          ctx.fillText(`• Rotational Latency (7200 RPM): ${hddRotLatency.toFixed(1)} ms`, hudX + 14, 84);
+          ctx.fillText(`• Transfer Time (Magnetic read): ${hddTransferTime.toFixed(2)} ms`, hudX + 14, 106);
+
+          const totalLat = (hddSeekTime + hddRotLatency + hddTransferTime);
+          const iops = Math.round(1000 / totalLat);
+
+          ctx.strokeStyle = OS.C.line;
+          ctx.beginPath();
+          ctx.moveTo(hudX + 14, 120);
+          ctx.lineTo(w - 34, 120);
+          ctx.stroke();
+
+          ctx.fillStyle = totalLat > 5 ? OS.C.rose : OS.C.green;
+          ctx.font = OS.font(12, 'mono', 700);
+          ctx.fillText(`Total Latency: ${totalLat.toFixed(2)} ms`, hudX + 14, 142);
+          ctx.fillText(`Throughput Limit: ~${iops.toLocaleString()} IOPS`, hudX + 14, 164);
+          ctx.font = OS.font(9, 'mono', 400);
+          ctx.fillStyle = OS.C.muted;
+          ctx.fillText(totalLat > 5 ? 'Mechanical arm seek creates 10ms bottleneck!' : 'Contiguous sector streaming avoids seek!', hudX + 14, 188);
+        } else {
+          // --- Mode 3: NVMe Multi-Queue vs SATA Bottleneck ---
+          const colW = Math.min(260, (w - 60) / 2);
+
+          // Left Box: SATA / AHCI
+          ctx.fillStyle = OS.rgba(OS.C.rose, 0.08);
+          ctx.strokeStyle = OS.C.rose;
+          ctx.roundRect(20, 18, colW, 195, 8);
+          ctx.fill(); ctx.stroke();
+
+          ctx.fillStyle = OS.C.rose;
+          ctx.font = OS.font(11, 'mono', 600);
+          ctx.fillText('LEGACY SATA / AHCI', 30, 38);
+          ctx.font = OS.font(10, 'mono', 400);
+          ctx.fillStyle = OS.C.ink;
+          ctx.fillText('• 1 Command Queue (Depth: 32)', 30, 60);
+          ctx.fillText('• Single Host MMU Register Lock', 30, 80);
+          ctx.fillText('• All CPU cores serialize on 1 lock', 30, 100);
+
+          ctx.fillStyle = nvmeBurstDone ? OS.C.rose : OS.C.muted;
+          ctx.font = OS.font(11, 'mono', 600);
+          ctx.fillText(nvmeBurstDone ? `Burst Latency: ${sataTime} µs (Stalled)` : 'Idle Queue State', 30, 135);
+          ctx.font = OS.font(9, 'mono', 400);
+          ctx.fillStyle = OS.C.ink;
+          ctx.fillText('Max IOPS: ~120,000 IOPS ceiling', 30, 160);
+          ctx.fillText('Contention: Severe multi-core lock churn', 30, 180);
+
+          // Right Box: NVMe over PCIe
+          const nvmeX = 20 + colW + 15;
+          ctx.fillStyle = OS.rgba(OS.C.teal, 0.08);
+          ctx.strokeStyle = OS.C.teal;
+          ctx.roundRect(nvmeX, 18, colW, 195, 8);
+          ctx.fill(); ctx.stroke();
+
+          ctx.fillStyle = OS.C.teal;
+          ctx.font = OS.font(11, 'mono', 600);
+          ctx.fillText('MODERN NVMe (PCIe 4.0/5.0)', nvmeX + 10, 38);
+          ctx.font = OS.font(10, 'mono', 400);
+          ctx.fillStyle = OS.C.ink;
+          ctx.fillText('• Up to 64,000 Queues (Depth: 64K)', nvmeX + 10, 60);
+          ctx.fillText('• Dedicated Queue Pair PER CPU CORE', nvmeX + 10, 80);
+          ctx.fillText('• Zero Locks: Direct host DRAM doorbells', nvmeX + 10, 100);
+
+          ctx.fillStyle = nvmeBurstDone ? OS.C.green : OS.C.muted;
+          ctx.font = OS.font(11, 'mono', 600);
+          ctx.fillText(nvmeBurstDone ? `Burst Latency: ${nvmeTime} µs (Parallel)` : 'Idle Parallel Queues', nvmeX + 10, 135);
+          ctx.font = OS.font(9, 'mono', 400);
+          ctx.fillStyle = OS.C.ink;
+          ctx.fillText('Max IOPS: > 1,500,000+ IOPS', nvmeX + 10, 160);
+          ctx.fillText('Scaling: Linear with CPU core count', nvmeX + 10, 180);
+        }
       }
     });
 
@@ -171,10 +519,29 @@
 
     function render() {
       cv.redraw();
-      readout.innerHTML = `
-        <b>Flash Memory Asymmetry:</b> Read & write happen at the <b>page level (4KB)</b>, but erasure can only occur at the <b>block level (2–8MB)</b>.<br>
-        The Flash Translation Layer (FTL) performs out-of-place writes to prevent slow block erasures on every write, managing wear-leveling and background garbage collection.
-      `;
+      if (mode === 'flash') {
+        const freeCount = pages.filter(p => p.status === 'EMPTY').length;
+        const invalidCount = pages.filter(p => p.status === 'INVALID').length;
+        const waf = hostWrites > 0 ? (flashWrites / hostWrites).toFixed(2) : '1.00';
+
+        readout.innerHTML = `
+          <b>FTL State:</b> <span class="hl">${flashAction}</span><br>
+          • <b>Write Amplification Factor (WAF):</b> <code>${waf}</code> (Host Writes: ${hostWrites}, Flash Writes: ${flashWrites}) | 
+          • <b>Free Pages:</b> ${freeCount}/${TOTAL_PAGES} | 
+          • <b>Stale/Invalid Pages:</b> ${invalidCount}/${TOTAL_PAGES}<br>
+          <span style="font-size:0.75rem; color:var(--muted)">Flash Physics Law: A page cannot be overwritten in place. The FTL writes out-of-place and runs Garbage Collection (TRIM) to reclaim stale blocks, creating write amplification.</span>
+        `;
+      } else if (mode === 'hdd') {
+        readout.innerHTML = `
+          <b>Hard Disk Physics:</b> <span class="hl">${hddAction}</span><br>
+          <span style="font-size:0.75rem; color:var(--muted)">Rotational Disk Formula: <code>Total Time = Seek Time + Rotational Delay + Transfer Time</code>. Because physical mechanical arms take ~8ms to move, random I/O collapses throughput to ~100 IOPS. Filesystems use sequential block layouts and elevator schedulers to avoid seeks.</span>
+        `;
+      } else {
+        readout.innerHTML = `
+          <b>NVMe Parallelism Breakthrough:</b> ${nvmeBurstDone ? '<span class="hl">Burst completed! NVMe completed in parallel in 9µs with zero locks, while SATA required 112µs due to single-queue lock serialization.</span>' : 'Click "Simulate 8-Core Parallel I/O Burst" to see lock contention vs multi-queue parallelism.'}<br>
+          <span style="font-size:0.75rem; color:var(--muted)">SATA bottlenecked multi-core processors on a single 32-command controller lock. NVMe assigns dedicated lock-free Submission & Completion queue pairs to each CPU core over high-bandwidth PCIe lanes.</span>
+        `;
+      }
     }
 
     render();
@@ -198,7 +565,7 @@
       options: paths.map(p => ({ label: p.name, value: p.name })),
       value: selectedPath.name,
       onChange: (v) => {
-        selectedPath = paths.find(p => p.name === v);
+        selectedPath = paths.find(p => p.name === v) || paths[0];
         render();
       }
     });
@@ -496,7 +863,7 @@
       options: progs.map(p => ({ label: p.name, value: p.name })),
       value: selected.name,
       onChange: (v) => {
-        selected = progs.find(p => p.name === v);
+        selected = progs.find(p => p.name === v) || progs[0];
         render();
       }
     });

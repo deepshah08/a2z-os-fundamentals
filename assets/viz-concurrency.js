@@ -39,6 +39,7 @@
     });
 
     OS.button(controls, 'Step Instruction ▶', () => {
+      if (stepIndex >= 6) return;
       if (mutexEnabled) {
         // With mutex, Thread A finishes before Thread B can enter
         if (stepIndex < 3) {
@@ -55,7 +56,7 @@
           instructions[stepIndex].effect();
         }
       }
-      stepIndex++;
+      stepIndex = Math.min(6, stepIndex + 1);
       render();
     }, { primary: true });
 
@@ -116,7 +117,7 @@
         ctx.font = OS.font(11, 'mono', 400);
         ctx.fillStyle = OS.C.ink;
         ctx.fillText(`Register %ebx: ${threadBReg}`, bX + 10, 70);
-        ctx.fillText(`Lock: ${mutexEnabled && stepIndex > 3 ? 'HELD' : (mutexEnabled && stepIndex > 0 && stepIndex <= 3 ? 'BLOCKED' : 'FREE')}`, bX + 10, 95);
+        ctx.fillText(`Lock: ${mutexEnabled && stepIndex >= 3 && stepIndex < 6 ? 'HELD' : (mutexEnabled && stepIndex > 0 && stepIndex < 3 ? 'BLOCKED' : 'FREE')}`, bX + 10, 95);
       }
     });
 

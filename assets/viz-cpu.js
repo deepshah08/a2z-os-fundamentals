@@ -178,8 +178,8 @@
 
       // Compute performance metrics
       const validProcs = procs.filter(p => p.finish !== -1);
-      const avgTurnaround = validProcs.reduce((acc, p) => acc + (p.finish - p.arrival), 0) / validProcs.length;
-      const avgResponse = validProcs.reduce((acc, p) => acc + (p.start - p.arrival), 0) / validProcs.length;
+      const avgTurnaround = validProcs.reduce((acc, p) => acc + (p.finish - p.arrival), 0) / (validProcs.length || 1);
+      const avgResponse = validProcs.reduce((acc, p) => acc + (p.start - p.arrival), 0) / (validProcs.length || 1);
       const busyTicks = compacted.filter(c => c.id !== 'IDLE').reduce((acc, c) => acc + c.duration, 0);
       const cpuUtil = Math.round((busyTicks / totalDuration) * 100);
 
@@ -876,7 +876,7 @@
       options: vectors.map(v => ({ label: `${v.name} (Vec ${v.vec})`, value: v.vec })),
       value: selectedVec.vec,
       onChange: (val) => {
-        selectedVec = vectors.find(v => v.vec === parseInt(val));
+        selectedVec = vectors.find(v => v.vec === parseInt(val)) || vectors[0];
         render();
       }
     });
