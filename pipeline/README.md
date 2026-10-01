@@ -68,11 +68,18 @@ Run the automated test runner:
 ```bash
 npm test
 ```
-The test harness ensures:
-- Every interactive element (`button`, `input[type="range"]`, `select`) executes without crashing.
-- Every state transition handles consecutive clicks (no broken one-way transitions).
-- Coordinates passed to Canvas API are strictly finite numbers (zero `NaN` or `Infinity`).
-- Viewports at 320px (mobile) do not clip labels or overflow bounding boxes.
+The test harness runs a strict two-stage audit:
+- **Stage 1 (Document, Typography & Math Formatting Audit)**:
+  - Verifies KaTeX CSS, JS, and auto-render extensions are included whenever LaTeX expressions (`$...$` or `$$...$$`) exist in the text.
+  - Verifies chapter metadata tags (`.ch-meta`) are spaced properly without concatenated text (preventing `01Physical Clocks`).
+  - Verifies CSS rules exist for `.ch-meta` (flexbox with gap) and `.ch-tag`.
+  - Verifies all TOC navigation anchors resolve to active chapter section IDs.
+  - Verifies all `<figure data-viz="...">` bindings correspond to registered visualizers.
+- **Stage 2 (Interactive Simulator & Viewport Audit)**:
+  - Every interactive element (`button`, `input[type="range"]`, `select`) executes without crashing.
+  - Every state transition handles consecutive clicks (no broken one-way transitions).
+  - Coordinates passed to Canvas API are strictly finite numbers (zero `NaN` or `Infinity`).
+  - Viewports at 320px, 480px, 768px, and 1200px do not clip labels or overflow bounding boxes.
 
 ### Phase 5: Permanent Hosting (Zero Expiration)
 1. Initialize git and commit:

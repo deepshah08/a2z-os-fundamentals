@@ -154,6 +154,10 @@ const indexHtml = `<!DOCTYPE html>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"
+          onload="if (typeof renderMathInElement === 'function') renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false});"></script>
 </head>
 <body>
 
@@ -195,7 +199,7 @@ const indexHtml = `<!DOCTYPE html>
     </div>
 
     <section id="ch-01" class="chapter">
-      <p class="ch-num">01</p>
+      <div class="ch-meta"><span class="ch-num">01</span> <span class="ch-tag">First Principles</span></div>
       <h2>First Principles</h2>
       <p>Welcome to ${opts.title}. Every chapter synthesizes canonical theory with live interactive labs.</p>
       <div class="callout analogy">
