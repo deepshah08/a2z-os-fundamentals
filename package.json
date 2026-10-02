@@ -4,8 +4,10 @@
   "description": "Operating Systems, Cycle by Cycle — An interactive visual field guide to OS fundamentals",
   "main": "assets/core.js",
   "scripts": {
-    "test": "node tests/audit-all-widgets.js",
-    "scaffold": "node pipeline/scaffold.js"
+    "test": "node tests/audit-all-widgets.js && python3 tests/e2e-browser-audit.py",
+    "scaffold": "node pipeline/scaffold.js",
+    "test:unit": "node tests/audit-all-widgets.js",
+    "test:e2e": "python3 tests/e2e-browser-audit.py"
   },
   "repository": {
     "type": "git",

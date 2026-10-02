@@ -39,7 +39,8 @@ console.log(`📁 Target Directory: ${targetDir}\n`);
 const dirs = [
   targetDir,
   path.join(targetDir, 'assets'),
-  path.join(targetDir, 'tests')
+  path.join(targetDir, 'tests'),
+  path.join(targetDir, '.github', 'workflows')
 ];
 
 dirs.forEach(d => {
@@ -52,24 +53,34 @@ const pkgJson = {
   version: "1.0.0",
   description: `${opts.title} — An interactive visual field guide`,
   scripts: {
-    "test": "node tests/audit-all-widgets.js"
+    "test": "node tests/audit-all-widgets.js && python3 tests/e2e-browser-audit.py",
+    "test:unit": "node tests/audit-all-widgets.js",
+    "test:e2e": "python3 tests/e2e-browser-audit.py"
   },
   author: opts.author,
   license: "MIT"
 };
 fs.writeFileSync(path.join(targetDir, 'package.json'), JSON.stringify(pkgJson, null, 2));
 
-// 2. Copy core.js and style.css from existing solid base
+// 2. Copy core.js, style.css, workflows, and test harnesses from existing solid base
 const currentDir = __dirname;
 const rootDir = path.resolve(currentDir, '..');
 
 const coreSrc = fs.readFileSync(path.join(rootDir, 'assets', 'core.js'), 'utf8');
 const styleSrc = fs.readFileSync(path.join(rootDir, 'assets', 'style.css'), 'utf8');
 const testSrc = fs.readFileSync(path.join(rootDir, 'tests', 'audit-all-widgets.js'), 'utf8');
+const e2eSrc = fs.readFileSync(path.join(rootDir, 'tests', 'e2e-browser-audit.py'), 'utf8');
 
 fs.writeFileSync(path.join(targetDir, 'assets', 'core.js'), coreSrc);
 fs.writeFileSync(path.join(targetDir, 'assets', 'style.css'), styleSrc);
 fs.writeFileSync(path.join(targetDir, 'tests', 'audit-all-widgets.js'), testSrc);
+fs.writeFileSync(path.join(targetDir, 'tests', 'e2e-browser-audit.py'), e2eSrc);
+
+// Workflows
+const cicdSrc = fs.readFileSync(path.join(rootDir, '.github', 'workflows', 'ci-cd.yml'), 'utf8');
+const rollbackSrc = fs.readFileSync(path.join(rootDir, '.github', 'workflows', 'rollback.yml'), 'utf8');
+fs.writeFileSync(path.join(targetDir, '.github', 'workflows', 'ci-cd.yml'), cicdSrc);
+fs.writeFileSync(path.join(targetDir, '.github', 'workflows', 'rollback.yml'), rollbackSrc);
 
 // 3. Generate Hero visualizer (assets/viz-hero.js)
 const heroVizCode = `/* ==========================================================================
