@@ -158,7 +158,7 @@ const indexHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>${opts.title}</title>
   <meta name="description" content="An interactive visual field guide to ${opts.title}.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
