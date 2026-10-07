@@ -1,0 +1,41 @@
+[
+  {
+    "repo": "deepshah08/a2z-os-fundamentals",
+    "title": "feat(scheduling): add interactive simulator for CPU Scheduling: Classic Policies",
+    "prompt": "# Explorable Curriculum Enhancement: CPU Scheduling: Classic Policies\n\n## Target Repository\n`deepshah08/a2z-os-fundamentals`\n\n## Objective\nImplement an interactive visualizer for the section `CPU Scheduling: Classic Policies` (ID: `#scheduling`) in `index.html`.\n\n## Architectural Guidelines\n1. **Zero External Dependencies**: Pure HTML5, CSS3, ES6+ JavaScript. Do not introduce webpack, vite, react, or npm dependencies.\n2. **Framework Compatibility**:\n   - Register the simulator using `OS.register('schedulingSim', function (host) { ... });` in an existing or new `assets/viz-*.js` file.\n   - Use standard helper primitives from `assets/core.js`:\n     - `OS.canvas(host, renderFn, { autoScale: true })`\n     - `OS.controls(host)`\n     - `OS.segmented(controls, { label, options, value, onChange })`\n     - `OS.slider(controls, { label, min, max, step, value, onChange, format })`\n     - `OS.button(controls, label, onClick, { primary: true/false })`\n   - Bind the simulator in `index.html` inside `<section id=\"scheduling\">` using:\n     ```html\n     <figure class=\"viz\" data-viz=\"schedulingSim\">\n       <figcaption>Detailed caption describing the interactive visualization.</figcaption>\n     </figure>\n     ```\n3. **Theming & Responsiveness**:\n   - Canvas graphics must adapt dynamically to dark and light modes via CSS variables (`--bg`, `--fg`, `--accent`, `--line`).\n   - Handles resizing gracefully via devicePixelRatio scaling.\n4. **Testing Gate**:\n   - Update `tests/audit-all-widgets.js` if necessary to include the new simulator in Stage 2 reactivity tests.\n   - Verify that `node tests/audit-all-widgets.js` and `python3 tests/e2e-browser-audit.py` pass with zero failures and zero uncaught exceptions.\n\nCreate a clean Pull Request targeting `main`.\n",
+    "metadata": {
+      "type": "add_interactive_visualizer",
+      "priority": "high",
+      "repo": "a2z-os-fundamentals",
+      "target_section": "scheduling",
+      "target_title": "CPU Scheduling: Classic Policies",
+      "description": "Add an explorable canvas simulation to Chapter 'CPU Scheduling: Classic Policies' (#scheduling) in a2z-os-fundamentals."
+    }
+  },
+  {
+    "repo": "deepshah08/a2z-os-fundamentals",
+    "title": "feat(landscape): add interactive simulator for The 2026 Systems Architecture Landscape",
+    "prompt": "# Explorable Curriculum Enhancement: The 2026 Systems Architecture Landscape\n\n## Target Repository\n`deepshah08/a2z-os-fundamentals`\n\n## Objective\nImplement an interactive visualizer for the section `The 2026 Systems Architecture Landscape` (ID: `#landscape`) in `index.html`.\n\n## Architectural Guidelines\n1. **Zero External Dependencies**: Pure HTML5, CSS3, ES6+ JavaScript. Do not introduce webpack, vite, react, or npm dependencies.\n2. **Framework Compatibility**:\n   - Register the simulator using `OS.register('landscapeSim', function (host) { ... });` in an existing or new `assets/viz-*.js` file.\n   - Use standard helper primitives from `assets/core.js`:\n     - `OS.canvas(host, renderFn, { autoScale: true })`\n     - `OS.controls(host)`\n     - `OS.segmented(controls, { label, options, value, onChange })`\n     - `OS.slider(controls, { label, min, max, step, value, onChange, format })`\n     - `OS.button(controls, label, onClick, { primary: true/false })`\n   - Bind the simulator in `index.html` inside `<section id=\"landscape\">` using:\n     ```html\n     <figure class=\"viz\" data-viz=\"landscapeSim\">\n       <figcaption>Detailed caption describing the interactive visualization.</figcaption>\n     </figure>\n     ```\n3. **Theming & Responsiveness**:\n   - Canvas graphics must adapt dynamically to dark and light modes via CSS variables (`--bg`, `--fg`, `--accent`, `--line`).\n   - Handles resizing gracefully via devicePixelRatio scaling.\n4. **Testing Gate**:\n   - Update `tests/audit-all-widgets.js` if necessary to include the new simulator in Stage 2 reactivity tests.\n   - Verify that `node tests/audit-all-widgets.js` and `python3 tests/e2e-browser-audit.py` pass with zero failures and zero uncaught exceptions.\n\nCreate a clean Pull Request targeting `main`.\n",
+    "metadata": {
+      "type": "add_interactive_visualizer",
+      "priority": "high",
+      "repo": "a2z-os-fundamentals",
+      "target_section": "landscape",
+      "target_title": "The 2026 Systems Architecture Landscape",
+      "description": "Add an explorable canvas simulation to Chapter 'The 2026 Systems Architecture Landscape' (#landscape) in a2z-os-fundamentals."
+    }
+  },
+  {
+    "repo": "deepshah08/a2z-networks-fundamentals",
+    "title": "feat(congestion-control): add interactive simulator for TCP Congestion Control: Reno & Cubic",
+    "prompt": "# Explorable Curriculum Enhancement: TCP Congestion Control: Reno & Cubic\n\n## Target Repository\n`deepshah08/a2z-networks-fundamentals`\n\n## Objective\nImplement an interactive visualizer for the section `TCP Congestion Control: Reno & Cubic` (ID: `#congestion-control`) in `index.html`.\n\n## Architectural Guidelines\n1. **Zero External Dependencies**: Pure HTML5, CSS3, ES6+ JavaScript. Do not introduce webpack, vite, react, or npm dependencies.\n2. **Framework Compatibility**:\n   - Register the simulator using `OS.register('congestion-controlSim', function (host) { ... });` in an existing or new `assets/viz-*.js` file.\n   - Use standard helper primitives from `assets/core.js`:\n     - `OS.canvas(host, renderFn, { autoScale: true })`\n     - `OS.controls(host)`\n     - `OS.segmented(controls, { label, options, value, onChange })`\n     - `OS.slider(controls, { label, min, max, step, value, onChange, format })`\n     - `OS.button(controls, label, onClick, { primary: true/false })`\n   - Bind the simulator in `index.html` inside `<section id=\"congestion-control\">` using:\n     ```html\n     <figure class=\"viz\" data-viz=\"congestion-controlSim\">\n       <figcaption>Detailed caption describing the interactive visualization.</figcaption>\n     </figure>\n     ```\n3. **Theming & Responsiveness**:\n   - Canvas graphics must adapt dynamically to dark and light modes via CSS variables (`--bg`, `--fg`, `--accent`, `--line`).\n   - Handles resizing gracefully via devicePixelRatio scaling.\n4. **Testing Gate**:\n   - Update `tests/audit-all-widgets.js` if necessary to include the new simulator in Stage 2 reactivity tests.\n   - Verify that `node tests/audit-all-widgets.js` and `python3 tests/e2e-browser-audit.py` pass with zero failures and zero uncaught exceptions.\n\nCreate a clean Pull Request targeting `main`.\n",
+    "metadata": {
+      "type": "add_interactive_visualizer",
+      "priority": "high",
+      "repo": "a2z-networks-fundamentals",
+      "target_section": "congestion-control",
+      "target_title": "TCP Congestion Control: Reno & Cubic",
+      "description": "Add an explorable canvas simulation to Chapter 'TCP Congestion Control: Reno & Cubic' (#congestion-control) in a2z-networks-fundamentals."
+    }
+  }
+]

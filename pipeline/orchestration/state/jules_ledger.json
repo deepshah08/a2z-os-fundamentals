@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "max_concurrent": 15,
+  "max_daily": 100,
+  "sessions": []
+}

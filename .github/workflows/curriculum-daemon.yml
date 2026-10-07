@@ -1,0 +1,95 @@
+name: Autonomous Curriculum Evolution Daemon
+
+on:
+  schedule:
+    # Runs daily at 02:00 UTC (cloud-hosted on GitHub runners, 0 local host load)
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Simulate without spawning live sessions'
+        type: boolean
+        default: false
+      dispatch_limit:
+        description: 'Maximum items to plan for dispatch (default 3)'
+        type: number
+        default: 3
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: curriculum-daemon
+  cancel-in-progress: false
+
+jobs:
+  evolution-cycle:
+    name: Fleet Discovery & PR Review Cycle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Anchor Repository (a2z-os-fundamentals)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js Runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Python Runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Clone Sibling Curriculums Side-by-Side
+        run: |
+          mkdir -p ../fleet-workspace
+          PEERS=(
+            "a2z-networks-fundamentals"
+            "a2z-system-design"
+            "a2z-distributed-systems"
+            "a2z-storage-engines"
+            "a2z-systems-performance"
+            "a2z-garbage-collection"
+            "a2z-erasure-coding"
+            "a2z-computer-architecture"
+            "a2z-cfa-l2-quants"
+          )
+          for repo in "${PEERS[@]}"; do
+            echo "Cloning $repo..."
+            git clone --depth 1 "https://github.com/deepshah08/$repo.git" "../$repo"
+          done
+          echo "✅ All 10 curriculums staged in workspace"
+
+      - name: Run Autonomous Curriculum Daemon
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DRY_FLAG=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            DRY_FLAG="--dry-run"
+          fi
+          LIMIT_FLAG="--limit ${{ github.event.inputs.dispatch_limit || 3 }}"
+          python3 pipeline/orchestration/auto_curriculum_daemon.py --cycle-once $DRY_FLAG $LIMIT_FLAG
+
+      - name: Upload Pending Dispatches & Ledger Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: curriculum-evolution-state
+          path: pipeline/orchestration/state/
+          if-no-files-found: ignore
+
+      - name: Commit & Push Updated Ledger and State
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add pipeline/orchestration/state/
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "chore(daemon): sync curriculum evolution ledger and pending dispatches [skip ci]"
+            git push origin main
+          else
+            echo "No state changes to commit."
+          fi
