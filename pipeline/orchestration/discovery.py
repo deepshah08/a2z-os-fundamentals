@@ -5,7 +5,7 @@ Audits all 10 curriculums to locate gaps:
   - Sections lacking interactive simulators
   - Low-coverage mathematical definitions
   - Simulators with single mode or limited controls
-Outputs structured improvement candidates ready for Google Jules or Gemini ideation.
+Outputs structured improvement candidates ready for Gemini AI Studio API or local Antigravity ideation.
 """
 
 import html
@@ -130,7 +130,7 @@ def discover_opportunities() -> List[Dict[str, Any]]:
 
     return opportunities
 
-def build_jules_prompt(opp: Dict[str, Any]) -> Tuple[str, str]:
+def build_curriculum_prompt(opp: Dict[str, Any]) -> Tuple[str, str]:
     repo = opp["repo"]
     sec_id = opp.get("target_section", "")
     sec_title = opp.get("target_title", "")

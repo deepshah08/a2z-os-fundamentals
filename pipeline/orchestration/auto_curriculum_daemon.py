@@ -15,7 +15,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from jules_manager import (
+from task_manager import (
     get_session_stats,
     can_spawn_session,
     record_new_session,
@@ -25,7 +25,7 @@ from jules_manager import (
 )
 from discovery import (
     discover_opportunities,
-    build_jules_prompt,
+    build_curriculum_prompt,
     REPOSITORIES
 )
 from pr_reviewer import review_open_prs
@@ -41,12 +41,12 @@ def run_cycle(dry_run: bool = False, max_dispatch: int = 3):
     review_open_prs(auto_merge=True)
 
     # 2. Check Quota & Capacity
-    print("\n[STEP 2/3] Checking Jules capacity & rate limits...")
+    print("\n[STEP 2/3] Checking task capacity & rate limits...")
     stats = get_session_stats()
     print_status_summary()
 
     if stats["concurrent_slots_left"] <= 0:
-        print("⚠️ No concurrent slots available. Waiting for active sessions to finish.")
+        print("⚠️ No concurrent slots available. Waiting for active tasks to finish.")
         return
     if stats["daily_slots_left"] <= 0:
         print("⚠️ 24-hour rate limit reached. Waiting for rolling window reset.")
@@ -67,7 +67,7 @@ def run_cycle(dry_run: bool = False, max_dispatch: int = 3):
     print(f"\n🎯 Selected {batch_size} candidate(s) for dispatch (from {len(opps)} total backlog):")
     candidates_to_dispatch = []
     for idx, opp in enumerate(selected[:batch_size], 1):
-        title, prompt = build_jules_prompt(opp)
+        title, prompt = build_curriculum_prompt(opp)
         print(f"\n--- Candidate #{idx} ---")
         print(f"Repo:    {opp['repo']}")
         print(f"Target:  {opp['target_title']} (#{opp.get('target_section', '')})")
@@ -79,7 +79,7 @@ def run_cycle(dry_run: bool = False, max_dispatch: int = 3):
             "metadata": opp
         })
 
-    # Save planned dispatches to state file for easy pickup by Antigravity or Jules API
+    # Save planned dispatches to state file for easy pickup by Antigravity or Gemini API
     dispatch_plan_file = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "state",
@@ -93,7 +93,7 @@ def run_cycle(dry_run: bool = False, max_dispatch: int = 3):
     if dry_run:
         print("\n✨ DRY RUN COMPLETE. No live sessions spawned.")
     else:
-        print(f"\n✨ Cycle complete. Ready for Jules execution ({len(candidates_to_dispatch)} items queued).")
+        print(f"\n✨ Cycle complete. Ready for Antigravity / Gemini execution ({len(candidates_to_dispatch)} items queued).")
 
 def main():
     parser = argparse.ArgumentParser(description="Autonomous Curriculum Evolution Daemon")

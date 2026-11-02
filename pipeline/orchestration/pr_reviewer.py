@@ -4,7 +4,7 @@ Automated PR Reviewer & Self-Healing Feedback Loop
 Scans open PRs across all 10 curriculums:
   - Fetches PR branch
   - Executes 3-Stage Quality Test Suite (audit-all-widgets.js + e2e-browser-audit.py)
-  - On Failure: Extracts error traces, comments on PR, and formats feedback for Jules session
+  - On Failure: Extracts error traces, comments on PR, and formats feedback for Antigravity / Gemini review
   - On Success: Approves, merges (squash), and updates ledger
 """
 
@@ -16,7 +16,7 @@ import sys
 import tempfile
 from typing import Dict, Any, List, Optional, Tuple
 
-from jules_manager import load_ledger, save_ledger, update_session
+from task_manager import load_ledger, save_ledger, update_session
 
 REPOSITORIES = [
     "a2z-os-fundamentals",
